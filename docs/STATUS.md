@@ -3,15 +3,15 @@
 > Phasen werden der Reihe nach abgearbeitet. Claude Code hakt erledigte Punkte
 > ab und ergänzt Erkenntnisse unten.
 >
-> **Aktuelle Phase: 0**
+> **Aktuelle Phase: 1**
 
-## Phase 0 — Projektgerüst
+## Phase 0 — Projektgerüst ✅
 
-- [ ] Node.js (LTS) und Claude Code auf dem Mac installiert
-- [ ] Electron-Projekt mit TypeScript aufgesetzt (`package.json`, `tsconfig.json`)
-- [ ] Ordnerstruktur gemäß `FOUNDATIONS.md` angelegt
-- [ ] App startet, eine leere Pille erscheint als Overlay
-- [ ] Git-Repository initialisiert
+- [x] Node.js (LTS) und Claude Code auf dem Mac installiert
+- [x] Electron-Projekt mit TypeScript aufgesetzt (`package.json`, `tsconfig.json`)
+- [x] Ordnerstruktur gemäß `FOUNDATIONS.md` angelegt
+- [x] App startet, eine leere Pille erscheint als Overlay
+- [x] Git-Repository initialisiert
 
 ## Phase 1 — Diktat-Modus (kleinstes lauffähiges MVP)
 
@@ -56,4 +56,7 @@
 > Claude Code trägt hier laufend Learnings ein — Stolpersteine, getroffene
 > Entscheidungen, alles was die nächste Sitzung wissen sollte.
 
-- _(noch leer)_
+- **Node.js**: Installiert via `brew install node@22`. PATH muss für neue Shells manuell gesetzt werden: `export PATH="/opt/homebrew/opt/node@22/bin:$PATH"`. Empfehlung: in `~/.zshrc` eintragen.
+- **pill.html-Pfad**: `main.js` liegt in `dist/`, `pill.html` in `src/renderer/`. Relativer Pfad `../src/renderer/pill.html` von `__dirname` (=`dist/`) aus ist korrekt.
+- **screencapture**: Benötigt Bildschirmaufnahme-Berechtigung — steht beim ersten Start-Test nicht zur Verfügung. Visueller Test muss direkt am Gerät erfolgen.
+- **Starten**: `export PATH="/opt/homebrew/opt/node@22/bin:$PATH" && npm run dev` im Projektverzeichnis.
