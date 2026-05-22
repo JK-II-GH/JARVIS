@@ -5,12 +5,18 @@ import * as path from "path";
 interface SettingsData {
   openaiApiKey?: string;
   groqApiKey?: string;
+  anthropicApiKey?: string;
 }
 
 export interface SttConfig {
   apiKey: string;
   baseURL?: string;
   model: string;
+}
+
+export interface AiConfig {
+  provider: "anthropic";
+  apiKey: string;
 }
 
 export class SettingsManager {
@@ -36,10 +42,14 @@ export class SettingsManager {
       };
     }
     if (this.data.openaiApiKey) {
-      return {
-        apiKey: this.data.openaiApiKey,
-        model: "whisper-1",
-      };
+      return { apiKey: this.data.openaiApiKey, model: "whisper-1" };
+    }
+    return null;
+  }
+
+  getAiConfig(): AiConfig | null {
+    if (this.data.anthropicApiKey) {
+      return { provider: "anthropic", apiKey: this.data.anthropicApiKey };
     }
     return null;
   }

@@ -3,7 +3,7 @@
 > Phasen werden der Reihe nach abgearbeitet. Claude Code hakt erledigte Punkte
 > ab und ergänzt Erkenntnisse unten.
 >
-> **Aktuelle Phase: 2**
+> **Aktuelle Phase: 3**
 
 ## Phase 0 — Projektgerüst ✅
 
@@ -22,13 +22,13 @@
 - [x] Transkript wird an der Cursorposition eingefügt
 - [x] Pille zeigt Status: bereit / hört zu / verarbeitet
 
-## Phase 2 — Text bearbeiten
+## Phase 2 — Text bearbeiten ✅
 
-- [ ] macOS-Berechtigung anfragen/prüfen: Bedienungshilfen
-- [ ] Markierten Text auslesen (über Zwischenablage)
-- [ ] `AIProvider`-Schnittstelle + Anthropic-Implementierung
-- [ ] Sprachbefehl auf markierten Text anwenden, Ergebnis ersetzen
-- [ ] Zwischenablage-Inhalt vorher sichern, danach wiederherstellen
+- [x] macOS-Berechtigung anfragen/prüfen: Bedienungshilfen
+- [x] Markierten Text auslesen (über Zwischenablage + Sentinel)
+- [x] `AIProvider`-Schnittstelle + Anthropic-Implementierung
+- [x] Sprachbefehl auf markierten Text anwenden, Ergebnis ersetzen
+- [x] Zwischenablage-Inhalt vorher sichern, danach wiederherstellen
 
 ## Phase 3 — Gespräch + Vorlesen
 
@@ -65,3 +65,6 @@
 - **API-Schlüssel**: Beim ersten Start ohne Schlüssel zeigt die App einen Dialog mit dem Pfad zu `settings.json` im userData-Verzeichnis (`~/Library/Application Support/jarvis/settings.json`).
 - **Audioformat**: Renderer wählt automatisch das beste unterstützte Format (`audio/webm;codecs=opus` bevorzugt). Whisper-API unterstützt WebM nativ.
 - **Texteinfügen**: Über Zwischenablage + AppleScript (`keystroke "v" using {command down}`). Vorheriger Clipboard-Inhalt wird nach 150 ms wiederhergestellt.
+- **Text lesen**: `readSelectedText()` setzt Sentinel-Wert, simuliert Cmd+C, vergleicht Ergebnis. Bedienungshilfen-Berechtigung für Electron.app nötig (Systemeinstellungen → Bedienungshilfen).
+- **Modus-Erkennung**: Automatisch — Text markiert → Bearbeiten-Modus, sonst Diktat.
+- **KI-Schlüssel**: `anthropicApiKey` in `~/Library/Application Support/jarvis/settings.json` eintragen (console.anthropic.com/settings/keys).

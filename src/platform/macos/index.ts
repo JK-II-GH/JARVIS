@@ -1,9 +1,12 @@
-import { shell } from "electron";
+import { shell, clipboard } from "electron";
 import { exec } from "child_process";
+import { promisify } from "util";
 import type { PlatformAdapter, HotkeyHandlers, PermissionStatus } from "../index";
 import { MacHotkey } from "./hotkey";
 import { checkPermissions, requestMicrophonePermission } from "./permissions";
 import { insertText } from "./textInsert";
+
+const execAsync = promisify(exec);
 
 export class MacOSAdapter implements PlatformAdapter {
   readonly name = "macos";
@@ -18,8 +21,22 @@ export class MacOSAdapter implements PlatformAdapter {
   }
 
   async readSelectedText(): Promise<string> {
-    // Phase 2: markierten Text über Zwischenablage auslesen
-    return "";
+    // Sentinel-Wert setzen, damit wir Änderungen sicher erkennen
+    const sentinel = "\x00JARVIS_SENTINEL\x00";
+    const previous = clipboard.readText();
+    clipboard.writeText(sentinel);
+
+    // Aktuelle Markierung in die Zwischenablage kopieren
+    await execAsync(
+      `osascript -e 'tell application "System Events" to keystroke "c" using {command down}'`,
+    );
+    await new Promise<void>((r) => setTimeout(r, 150));
+
+    const selected = clipboard.readText();
+    clipboard.writeText(previous); // Zwischenablage sofort wiederherstellen
+
+    // Wenn sich nichts geändert hat, war nichts markiert
+    return selected === sentinel ? "" : selected;
   }
 
   async insertText(text: string): Promise<void> {

@@ -8,7 +8,7 @@ export async function checkPermissions(): Promise<PermissionStatus> {
     // Eingabeüberwachung: kein direktes Electron-API — uiohook-napi schlägt
     // lautlos fehl, wenn die Berechtigung fehlt (kein Absturz).
     inputMonitoring: true,
-    accessibility: false, // wird in Phase 2 geprüft
+    accessibility: systemPreferences.isTrustedAccessibilityClient(false),
   };
 }
 
