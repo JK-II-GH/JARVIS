@@ -11,7 +11,9 @@
       "Bash(screencapture -x /tmp/jarvis_test.png)",
       "Bash(kill 45732)",
       "Bash(pkill -f \"npm exec electron\")",
-      "Bash(pkill -f \"node_modules/electron/dist/Electron.app\")"
+      "Bash(pkill -f \"node_modules/electron/dist/Electron.app\")",
+      "Bash(sleep 4 && cat /tmp/jarvis.log)",
+      "Bash(open \"x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent\")"
     ]
   }
 }
