@@ -69,6 +69,35 @@
       border-color: rgba(99,179,237,0.6);
     }
 
+    .input-wrap {
+      flex: 1;
+      position: relative;
+      display: flex;
+    }
+
+    .input-wrap input {
+      flex: 1;
+      padding-right: 32px;
+    }
+
+    .eye-btn {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      padding: 2px;
+      cursor: pointer;
+      color: rgba(255,255,255,0.3);
+      font-size: 14px;
+      line-height: 1;
+      transition: color 0.15s;
+      user-select: none;
+    }
+
+    .eye-btn:hover { color: rgba(255,255,255,0.65); }
+
     select option { background: #2c2c2e; }
 
     .hint {
@@ -143,12 +172,18 @@
     </div>
     <div class="field">
       <label>Anthropic API-Key</label>
-      <input type="password" id="anthropicKey" placeholder="sk-ant-..." autocomplete="off" />
+      <div class="input-wrap">
+        <input type="password" id="anthropicKey" placeholder="sk-ant-..." autocomplete="off" />
+        <button class="eye-btn" data-target="anthropicKey" tabindex="-1">👁</button>
+      </div>
     </div>
     <div class="hint"><a href="#" data-url="https://console.anthropic.com/settings/keys">console.anthropic.com/settings/keys</a></div>
     <div class="field">
       <label>OpenAI API-Key</label>
-      <input type="password" id="openaiKey" placeholder="sk-..." autocomplete="off" />
+      <div class="input-wrap">
+        <input type="password" id="openaiKey" placeholder="sk-..." autocomplete="off" />
+        <button class="eye-btn" data-target="openaiKey" tabindex="-1">👁</button>
+      </div>
     </div>
     <div class="hint"><a href="#" data-url="https://platform.openai.com/api-keys">platform.openai.com/api-keys</a></div>
   </div>
@@ -157,7 +192,10 @@
     <div class="section-title">Spracherkennung (STT)</div>
     <div class="field">
       <label>Groq API-Key</label>
-      <input type="password" id="groqKey" placeholder="gsk_..." autocomplete="off" />
+      <div class="input-wrap">
+        <input type="password" id="groqKey" placeholder="gsk_..." autocomplete="off" />
+        <button class="eye-btn" data-target="groqKey" tabindex="-1">👁</button>
+      </div>
     </div>
     <div class="hint"><a href="#" data-url="https://console.groq.com/keys">console.groq.com/keys</a> — kostenlos</div>
   </div>
@@ -200,6 +238,16 @@
         e.preventDefault();
         api.openExternal(a.getAttribute('data-url'));
       });
+    });
+
+    document.querySelectorAll('.eye-btn').forEach((btn) => {
+      const input = document.getElementById(btn.getAttribute('data-target'));
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        input.type = 'text';
+      });
+      btn.addEventListener('mouseup',   () => { input.type = 'password'; });
+      btn.addEventListener('mouseleave', () => { input.type = 'password'; });
     });
   </script>
 </body>
