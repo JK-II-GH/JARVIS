@@ -5,8 +5,11 @@ import type { PlatformAdapter } from "./platform/index";
 import { SettingsManager } from "./core/settings";
 import { WhisperProvider } from "./core/stt/WhisperProvider";
 import { AnthropicProvider } from "./core/ai/AnthropicProvider";
+import { OpenAIProvider } from "./core/ai/OpenAIProvider";
+import type { AIProvider } from "./core/ai/AIProvider";
 
 let pillWindow: BrowserWindow | null = null;
+let settingsWindow: BrowserWindow | null = null;
 let platform: PlatformAdapter;
 let settings: SettingsManager;
 
@@ -48,6 +51,35 @@ function createPillWindow(): void {
 
   pillWindow.loadFile(path.join(__dirname, "../src/renderer/pill.html"));
   pillWindow.on("closed", () => { pillWindow = null; });
+}
+
+function openSettingsWindow(): void {
+  if (settingsWindow) { settingsWindow.focus(); return; }
+
+  settingsWindow = new BrowserWindow({
+    width: 480,
+    height: 380,
+    title: "JARVIS — Einstellungen",
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload-settings.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  settingsWindow.loadFile(path.join(__dirname, "../src/renderer/settings.html"));
+  settingsWindow.on("closed", () => { settingsWindow = null; });
+}
+
+function getAiProvider(): AIProvider | null {
+  const cfg = settings.getAiConfig();
+  if (!cfg) return null;
+  return cfg.provider === "openai"
+    ? new OpenAIProvider(cfg.apiKey)
+    : new AnthropicProvider(cfg.apiKey);
 }
 
 function sendStatus(status: "bereit" | "aufnahme" | "verarbeitet" | "spricht", modus = "Diktat"): void {
@@ -124,9 +156,38 @@ async function initialize(): Promise<void> {
 
   // Modus-Wechsel vom Renderer (Klick auf Modus-Badge)
   ipcMain.on("jarvis:set-mode", (_, mode: string) => {
-    currentMode = mode as "dictation" | "edit";
+    currentMode = mode as "dictation" | "edit" | "conversation";
     console.log(`JARVIS: Modus gesetzt auf "${currentMode}"`);
   });
+
+  // Einstellungsfenster öffnen (Klick auf Pille)
+  ipcMain.on("jarvis:open-settings", () => openSettingsWindow());
+
+  // Settings laden / speichern
+  ipcMain.handle("jarvis:settings-load", () => {
+    const keys = settings.getRawKeys();
+    return {
+      aiProvider:   settings.getAiProvider(),
+      anthropicKey: keys.anthropicApiKey,
+      openaiKey:    keys.openaiApiKey,
+      groqKey:      keys.groqApiKey,
+    };
+  });
+
+  ipcMain.handle("jarvis:settings-save", (_, data: Record<string, string>) => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs") as typeof import("fs");
+    const raw = JSON.parse(fs.readFileSync(settings.settingsFilePath, "utf-8") || "{}");
+    if (data.anthropicKey) raw.anthropicApiKey = data.anthropicKey;
+    if (data.openaiKey)    raw.openaiApiKey    = data.openaiKey;
+    if (data.groqKey)      raw.groqApiKey      = data.groqKey;
+    raw.aiProvider = data.aiProvider || "anthropic";
+    fs.writeFileSync(settings.settingsFilePath, JSON.stringify(raw, null, 2));
+    settings = new SettingsManager();
+    console.log(`JARVIS: Einstellungen gespeichert, Anbieter="${raw.aiProvider}"`);
+  });
+
+  ipcMain.on("jarvis:settings-close", () => settingsWindow?.close());
 
   // Hotkey: Cmd+Alt halten
   await platform.registerHotkey({
@@ -184,14 +245,13 @@ async function initialize(): Promise<void> {
       console.log(`JARVIS: Modus="${currentMode}", selectedText.length=${selectedText.length}, transcript="${transcript}"`);
 
       if (currentMode === "conversation") {
-        // Gesprächsmodus: Claude mit eingebauter Websuche
-        const aiConfig = settings.getAiConfig();
-        if (!aiConfig) {
-          console.error("JARVIS: Kein anthropicApiKey für Gesprächsmodus.");
+        const ai = getAiProvider();
+        if (!ai) {
+          console.error("JARVIS: Kein KI-Schlüssel für Gesprächsmodus.");
           sendStatus("bereit", "Gespräch");
           return;
         }
-        const answer = await new AnthropicProvider(aiConfig.apiKey).chat(transcript);
+        const answer = await ai.chat(transcript);
         if (answer) startSpeaking(answer);
         return; // sendStatus wird von startSpeaking/stopSpeaking übernommen
       } else if (currentMode === "edit") {
@@ -203,17 +263,16 @@ async function initialize(): Promise<void> {
           sendStatus("bereit", "Bearbeiten");
           return;
         }
-        const aiConfig = settings.getAiConfig();
-        if (!aiConfig) {
+        const ai = getAiProvider();
+        if (!ai) {
           console.error(
             "JARVIS: Kein KI-Schlüssel für Text-bearbeiten-Modus.\n" +
-            `Trage "anthropicApiKey" in ${settings.settingsFilePath} ein.`,
+            `Trage einen API-Schlüssel in ${settings.settingsFilePath} ein.`,
           );
           sendStatus("bereit", "Bearbeiten");
           return;
         }
-        const result = await new AnthropicProvider(aiConfig.apiKey)
-          .process(selectedText, transcript);
+        const result = await ai.process(selectedText, transcript);
         if (result) await platform.insertText(result);
       } else {
         // Diktat-Modus: Transkript einfügen

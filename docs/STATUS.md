@@ -3,7 +3,7 @@
 > Phasen werden der Reihe nach abgearbeitet. Claude Code hakt erledigte Punkte
 > ab und ergänzt Erkenntnisse unten.
 >
-> **Aktuelle Phase: 3**
+> **Aktuelle Phase: 4**
 
 ## Phase 0 — Projektgerüst ✅
 
@@ -30,19 +30,19 @@
 - [x] Sprachbefehl auf markierten Text anwenden, Ergebnis ersetzen
 - [x] Zwischenablage-Inhalt vorher sichern, danach wiederherstellen
 
-## Phase 3 — Gespräch + Vorlesen
+## Phase 3 — Gespräch + Vorlesen ✅
 
-- [ ] Gesprächsmodus (freie Unterhaltung)
-- [ ] System-TTS zum Vorlesen der Antwort
-- [ ] Moduswechsel per Doppeltipp
-- [ ] Escape bricht Vorlesen oder laufende Aktion ab
+- [x] Gesprächsmodus (freie Unterhaltung)
+- [x] System-TTS zum Vorlesen der Antwort
+- [x] Moduswechsel per Doppeltipp
+- [x] Escape bricht Vorlesen oder laufende Aktion ab
 
 ## Phase 4 — Mehrere Anbieter, Einstellungen, Datei-Kontext
 
-- [ ] OpenAI-Implementierung des `AIProvider`
-- [ ] Einstellungsfenster: Anbieterauswahl, Hotkey, Position der Pille
+- [x] OpenAI-Implementierung des `AIProvider` (GPT-4o, process + chat)
+- [x] Einstellungsfenster: Anbieterauswahl (Anthropic/OpenAI), API-Schlüssel, ⚙-Button in Pille
+- [x] Einstellungen im App-Datenverzeichnis speichern (`~/Library/Application Support/jarvis/settings.json`)
 - [ ] Datei-Kontext: PDF/Bild auswählen und in den KI-Aufruf laden
-- [ ] Einstellungen und Schlüssel sicher im App-Datenverzeichnis speichern
 
 ## Phase 5 — Verteilung
 

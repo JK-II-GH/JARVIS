@@ -103,6 +103,21 @@
       background: rgba(251, 146, 60, 0.22);
       color: rgba(253, 186, 116, 0.95);
     }
+
+    .settings-btn {
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.25);
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+      padding: 2px 4px;
+      border-radius: 4px;
+      transition: color 0.15s;
+      line-height: 1;
+    }
+
+    .settings-btn:hover {
+      color: rgba(255, 255, 255, 0.6);
+    }
   </style>
 </head>
 <body>
@@ -110,6 +125,7 @@
     <div class="indikator" id="indikator"></div>
     <span class="status-text" id="statusText">Bereit</span>
     <span class="modus-badge" id="modusBadge" title="Klicken zum Wechseln">Diktat</span>
+    <span class="settings-btn" id="settingsBtn" title="Einstellungen">⚙</span>
   </div>
 
   <script>
@@ -135,6 +151,10 @@
     modusBadge.addEventListener('click', () => {
       if (aufnahmeAktiv) return;
       applyModus((modusIndex + 1) % MODI.length);
+    });
+
+    document.getElementById('settingsBtn').addEventListener('click', () => {
+      window.jarvis.openSettings();
     });
 
     // Doppeltipp vom Main-Prozess

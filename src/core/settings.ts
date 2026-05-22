@@ -7,6 +7,7 @@ interface SettingsData {
   groqApiKey?: string;
   anthropicApiKey?: string;
   perplexityApiKey?: string;
+  aiProvider?: "anthropic" | "openai";
 }
 
 export interface SttConfig {
@@ -16,7 +17,7 @@ export interface SttConfig {
 }
 
 export interface AiConfig {
-  provider: "anthropic";
+  provider: "anthropic" | "openai";
   apiKey: string;
 }
 
@@ -49,14 +50,38 @@ export class SettingsManager {
   }
 
   getAiConfig(): AiConfig | null {
+    const preferred = this.data.aiProvider ?? "anthropic";
+    if (preferred === "openai" && this.data.openaiApiKey) {
+      return { provider: "openai", apiKey: this.data.openaiApiKey };
+    }
     if (this.data.anthropicApiKey) {
       return { provider: "anthropic", apiKey: this.data.anthropicApiKey };
+    }
+    if (this.data.openaiApiKey) {
+      return { provider: "openai", apiKey: this.data.openaiApiKey };
     }
     return null;
   }
 
   getPerplexityApiKey(): string | null {
     return this.data.perplexityApiKey ?? null;
+  }
+
+  getRawKeys(): { anthropicApiKey: string; openaiApiKey: string; groqApiKey: string } {
+    return {
+      anthropicApiKey: this.data.anthropicApiKey ?? "",
+      openaiApiKey:    this.data.openaiApiKey    ?? "",
+      groqApiKey:      this.data.groqApiKey      ?? "",
+    };
+  }
+
+  setAiProvider(provider: "anthropic" | "openai"): void {
+    this.data.aiProvider = provider;
+    this.save();
+  }
+
+  getAiProvider(): "anthropic" | "openai" {
+    return this.data.aiProvider ?? "anthropic";
   }
 
   private load(): SettingsData {

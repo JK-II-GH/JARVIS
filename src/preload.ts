@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld("jarvis", {
     ipcRenderer.send("jarvis:audio-data", data, mimeType),
   setMode: (mode: string) =>
     ipcRenderer.send("jarvis:set-mode", mode),
+  openSettings: () =>
+    ipcRenderer.send("jarvis:open-settings"),
 
   // Main → Renderer
   onStartRecording: (cb: () => void) =>

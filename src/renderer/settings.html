@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>JARVIS — Einstellungen</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+      font-size: 13px;
+      background: #1c1c1e;
+      color: rgba(255,255,255,0.85);
+      padding: 24px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 17px;
+      font-weight: 600;
+      margin-bottom: 24px;
+      color: #fff;
+    }
+
+    .section {
+      background: rgba(255,255,255,0.06);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: rgba(255,255,255,0.4);
+      margin-bottom: 12px;
+    }
+
+    .field {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .field:last-child { margin-bottom: 0; }
+
+    label {
+      width: 140px;
+      flex-shrink: 0;
+      color: rgba(255,255,255,0.7);
+    }
+
+    input[type="text"], input[type="password"], select {
+      flex: 1;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: rgba(255,255,255,0.9);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input:focus, select:focus {
+      border-color: rgba(99,179,237,0.6);
+    }
+
+    select option { background: #2c2c2e; }
+
+    .hint {
+      font-size: 11px;
+      color: rgba(255,255,255,0.3);
+      margin-top: 4px;
+      margin-left: 152px;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    button {
+      padding: 7px 18px;
+      border-radius: 7px;
+      border: none;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    button:hover { opacity: 0.85; }
+
+    .btn-cancel {
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.8);
+    }
+
+    .btn-save {
+      background: #0a84ff;
+      color: #fff;
+    }
+
+    .saved-hint {
+      font-size: 12px;
+      color: #4ade80;
+      align-self: center;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .saved-hint.visible { opacity: 1; }
+  </style>
+</head>
+<body>
+  <h1>JARVIS — Einstellungen</h1>
+
+  <div class="section">
+    <div class="section-title">KI-Anbieter</div>
+    <div class="field">
+      <label>Anbieter</label>
+      <select id="aiProvider">
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="openai">OpenAI (GPT-4o)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Anthropic API-Key</label>
+      <input type="password" id="anthropicKey" placeholder="sk-ant-..." autocomplete="off" />
+    </div>
+    <div class="field">
+      <label>OpenAI API-Key</label>
+      <input type="password" id="openaiKey" placeholder="sk-..." autocomplete="off" />
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Spracherkennung (STT)</div>
+    <div class="field">
+      <label>Groq API-Key</label>
+      <input type="password" id="groqKey" placeholder="gsk_..." autocomplete="off" />
+    </div>
+    <div class="hint">Groq ist kostenlos — Schlüssel unter console.groq.com/keys</div>
+  </div>
+
+  <div class="actions">
+    <span class="saved-hint" id="savedHint">Gespeichert ✓</span>
+    <button class="btn-cancel" id="btnCancel">Abbrechen</button>
+    <button class="btn-save" id="btnSave">Speichern</button>
+  </div>
+
+  <script>
+    const { jarvisSettings } = window;
+
+    // Felder laden
+    jarvisSettings.load().then((s) => {
+      document.getElementById('aiProvider').value  = s.aiProvider    || 'anthropic';
+      document.getElementById('anthropicKey').value = s.anthropicKey || '';
+      document.getElementById('openaiKey').value    = s.openaiKey    || '';
+      document.getElementById('groqKey').value      = s.groqKey      || '';
+    });
+
+    document.getElementById('btnSave').addEventListener('click', async () => {
+      await jarvisSettings.save({
+        aiProvider:    document.getElementById('aiProvider').value,
+        anthropicKey:  document.getElementById('anthropicKey').value.trim(),
+        openaiKey:     document.getElementById('openaiKey').value.trim(),
+        groqKey:       document.getElementById('groqKey').value.trim(),
+      });
+      const hint = document.getElementById('savedHint');
+      hint.classList.add('visible');
+      setTimeout(() => hint.classList.remove('visible'), 2000);
+    });
+
+    document.getElementById('btnCancel').addEventListener('click', () => {
+      jarvisSettings.close();
+    });
+  </script>
+</body>
+</html>
