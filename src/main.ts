@@ -106,7 +106,6 @@ async function initialize(): Promise<void> {
       const whisper = new WhisperProvider(sttConfig);
       const transcript = await whisper.transcribe(Buffer.from(data), mimeType);
 
-      console.log(`JARVIS: Transkript = "${transcript}" (${transcript.length} Zeichen)`);
       if (transcript) {
         await platform.insertText(transcript);
       }

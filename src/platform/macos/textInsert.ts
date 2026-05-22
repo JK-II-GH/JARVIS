@@ -6,9 +6,7 @@ const execAsync = promisify(exec);
 
 export async function insertText(text: string): Promise<void> {
   const previous = clipboard.readText();
-  console.log(`JARVIS textInsert: schreibe "${text}" in Zwischenablage`);
   clipboard.writeText(text);
-  console.log(`JARVIS textInsert: Zwischenablage nach Schreiben = "${clipboard.readText()}"`);
 
   await execAsync(
     `osascript -e 'tell application "System Events" to keystroke "v" using {command down}'`,
