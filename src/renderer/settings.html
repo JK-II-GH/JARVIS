@@ -78,6 +78,17 @@
       margin-left: 152px;
     }
 
+    .hint a {
+      color: rgba(99,179,237,0.7);
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .hint a:hover {
+      color: rgba(99,179,237,1);
+      text-decoration: underline;
+    }
+
     .actions {
       display: flex;
       justify-content: flex-end;
@@ -134,10 +145,12 @@
       <label>Anthropic API-Key</label>
       <input type="password" id="anthropicKey" placeholder="sk-ant-..." autocomplete="off" />
     </div>
+    <div class="hint"><a href="#" data-url="https://console.anthropic.com/settings/keys">console.anthropic.com/settings/keys</a></div>
     <div class="field">
       <label>OpenAI API-Key</label>
       <input type="password" id="openaiKey" placeholder="sk-..." autocomplete="off" />
     </div>
+    <div class="hint"><a href="#" data-url="https://platform.openai.com/api-keys">platform.openai.com/api-keys</a></div>
   </div>
 
   <div class="section">
@@ -146,7 +159,7 @@
       <label>Groq API-Key</label>
       <input type="password" id="groqKey" placeholder="gsk_..." autocomplete="off" />
     </div>
-    <div class="hint">Groq ist kostenlos — Schlüssel unter console.groq.com/keys</div>
+    <div class="hint"><a href="#" data-url="https://console.groq.com/keys">console.groq.com/keys</a> — kostenlos</div>
   </div>
 
   <div class="actions">
@@ -180,6 +193,13 @@
 
     document.getElementById('btnCancel').addEventListener('click', () => {
       api.close();
+    });
+
+    document.querySelectorAll('a[data-url]').forEach((a) => {
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        api.openExternal(a.getAttribute('data-url'));
+      });
     });
   </script>
 </body>
