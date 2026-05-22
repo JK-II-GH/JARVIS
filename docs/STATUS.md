@@ -68,3 +68,4 @@
 - **Text lesen**: `readSelectedText()` setzt Sentinel-Wert, simuliert Cmd+C, vergleicht Ergebnis. Bedienungshilfen-Berechtigung für Electron.app nötig (Systemeinstellungen → Bedienungshilfen).
 - **Modus-Erkennung**: Automatisch — Text markiert → Bearbeiten-Modus, sonst Diktat.
 - **KI-Schlüssel**: `anthropicApiKey` in `~/Library/Application Support/jarvis/settings.json` eintragen (console.anthropic.com/settings/keys).
+- **Text-Lesen im Bearbeiten-Modus**: Cmd+C darf NICHT während Cmd+Alt gehalten wird simuliert werden — macOS schickt dann Cmd+Alt+C an die Zielapp, was ignoriert wird. Fix: `readSelectedText()` erst in `onHoldEnd` aufrufen (nach Loslassen der Modifier). Transkription und Text-Lesen laufen parallel via `Promise.all`.

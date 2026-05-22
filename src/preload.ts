@@ -16,4 +16,6 @@ contextBridge.exposeInMainWorld("jarvis", {
     ipcRenderer.on("jarvis:status-update", (_, status: string, modus: string) =>
       cb(status, modus),
     ),
+  onModeUpdate: (cb: (mode: string) => void) =>
+    ipcRenderer.on("jarvis:mode-update", (_, mode: string) => cb(mode)),
 });

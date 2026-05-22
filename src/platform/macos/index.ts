@@ -1,5 +1,5 @@
 import { shell, clipboard } from "electron";
-import { exec } from "child_process";
+import { exec, type ChildProcess } from "child_process";
 import { promisify } from "util";
 import type { PlatformAdapter, HotkeyHandlers, PermissionStatus } from "../index";
 import { MacHotkey } from "./hotkey";
@@ -11,6 +11,7 @@ const execAsync = promisify(exec);
 export class MacOSAdapter implements PlatformAdapter {
   readonly name = "macos";
   private hotkey = new MacHotkey();
+  private sayProcess: ChildProcess | null = null;
 
   async registerHotkey(handlers: HotkeyHandlers): Promise<void> {
     await this.hotkey.register(handlers);
@@ -59,12 +60,19 @@ export class MacOSAdapter implements PlatformAdapter {
   }
 
   async speak(text: string): Promise<void> {
-    // Einfache System-TTS über macOS say-Befehl (Phase 3 verfeinern)
-    exec(`say ${JSON.stringify(text)}`);
+    return new Promise<void>((resolve) => {
+      this.sayProcess = exec(`say ${JSON.stringify(text)}`, () => {
+        this.sayProcess = null;
+        resolve();
+      });
+    });
   }
 
   stopSpeaking(): void {
-    exec("killall say");
+    if (this.sayProcess) {
+      this.sayProcess.kill();
+      this.sayProcess = null;
+    }
   }
 }
 

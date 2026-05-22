@@ -54,6 +54,12 @@
       animation: pulsieren 1s ease-in-out infinite;
     }
 
+    .indikator.spricht {
+      background: #818cf8;
+      box-shadow: 0 0 8px #818cf8;
+      animation: pulsieren 0.8s ease-in-out infinite;
+    }
+
     @keyframes pulsieren {
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.5; transform: scale(0.85); }
@@ -106,19 +112,29 @@
     const statusText  = document.getElementById('statusText');
     const modusBadge  = document.getElementById('modusBadge');
 
-    const MODI = ['Diktat', 'Bearbeiten'];
-    let modusIndex = 0; // 0 = Diktat, 1 = Bearbeiten
+    const MODI = ['Diktat', 'Bearbeiten', 'Gespräch'];
+    const MODI_VALUES = ['dictation', 'edit', 'conversation'];
+    let modusIndex = 0;
     let aufnahmeAktiv = false;
 
     // ── Modus-Umschalter ────────────────────────────────────────────────────
 
-    modusBadge.addEventListener('click', () => {
-      if (aufnahmeAktiv) return; // kein Wechsel während Aufnahme
-      modusIndex = (modusIndex + 1) % MODI.length;
-      const modus = MODI[modusIndex];
-      modusBadge.textContent = modus;
+    function applyModus(index) {
+      modusIndex = index;
+      modusBadge.textContent = MODI[modusIndex];
       modusBadge.classList.toggle('aktiv', modusIndex !== 0);
-      window.jarvis.setMode(modusIndex === 0 ? 'dictation' : 'edit');
+      window.jarvis.setMode(MODI_VALUES[modusIndex]);
+    }
+
+    modusBadge.addEventListener('click', () => {
+      if (aufnahmeAktiv) return;
+      applyModus((modusIndex + 1) % MODI.length);
+    });
+
+    // Doppeltipp vom Main-Prozess
+    window.jarvis.onModeUpdate((mode) => {
+      const idx = MODI_VALUES.indexOf(mode);
+      if (idx !== -1) applyModus(idx);
     });
 
     // ── Status ──────────────────────────────────────────────────────────────
@@ -127,6 +143,7 @@
       bereit:       { text: 'Bereit',          klass: '' },
       aufnahme:     { text: 'Hoert zu ...',    klass: 'aufnahme' },
       verarbeitet:  { text: 'Verarbeitet ...', klass: 'verarbeitet' },
+      spricht:      { text: 'Spricht ...',     klass: 'spricht' },
     };
 
     function setStatus(status, modus) {

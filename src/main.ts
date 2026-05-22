@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, screen, ipcMain, dialog, globalShortcut } from "electron";
 import * as path from "path";
 import { createPlatformAdapter } from "./platform/index";
 import type { PlatformAdapter } from "./platform/index";
@@ -11,9 +11,16 @@ let platform: PlatformAdapter;
 let settings: SettingsManager;
 
 // Zustand des aktuellen Vorgangs
-let currentMode: "dictation" | "edit" = "dictation";
+let currentMode: "dictation" | "edit" | "conversation" = "dictation";
 // Im Bearbeiten-Modus: Promise das beim Loslassen des Hotkeys gestartet wird
 let pendingSelectedText: Promise<string> | null = null;
+// TTS läuft gerade
+let speaking = false;
+
+const MODES: Array<"dictation" | "edit" | "conversation"> = ["dictation", "edit", "conversation"];
+const MODE_LABELS: Record<string, string> = {
+  dictation: "Diktat", edit: "Bearbeiten", conversation: "Gespräch",
+};
 
 // ── Pille ──────────────────────────────────────────────────────────────────
 
@@ -43,8 +50,25 @@ function createPillWindow(): void {
   pillWindow.on("closed", () => { pillWindow = null; });
 }
 
-function sendStatus(status: "bereit" | "aufnahme" | "verarbeitet", modus = "Diktat"): void {
+function sendStatus(status: "bereit" | "aufnahme" | "verarbeitet" | "spricht", modus = "Diktat"): void {
   pillWindow?.webContents.send("jarvis:status-update", status, modus);
+}
+
+function startSpeaking(text: string): void {
+  speaking = true;
+  sendStatus("spricht", MODE_LABELS[currentMode]);
+  globalShortcut.register("Escape", stopSpeaking);
+  platform.speak(text).then(() => {
+    if (speaking) stopSpeaking();
+  });
+}
+
+function stopSpeaking(): void {
+  if (!speaking) return;
+  platform.stopSpeaking();
+  speaking = false;
+  globalShortcut.unregister("Escape");
+  sendStatus("bereit", MODE_LABELS[currentMode]);
 }
 
 // ── Start ──────────────────────────────────────────────────────────────────
@@ -107,16 +131,14 @@ async function initialize(): Promise<void> {
   // Hotkey: Cmd+Alt halten
   await platform.registerHotkey({
     onHoldStart: () => {
-      const label = currentMode === "edit" ? "Bearbeiten" : "Diktat";
-      // Aufnahme sofort starten — Text wird erst beim Loslassen gelesen,
-      // damit Cmd+Alt nicht mehr gehalten sind und Cmd+C sauber ankommt
+      // Laufende TTS beim neuen Hotkey-Druck stoppen
+      if (speaking) stopSpeaking();
       pendingSelectedText = null;
-      sendStatus("aufnahme", label);
+      sendStatus("aufnahme", MODE_LABELS[currentMode]);
       pillWindow?.webContents.send("jarvis:start-recording");
     },
     onHoldEnd: () => {
-      const label = currentMode === "edit" ? "Bearbeiten" : "Diktat";
-      sendStatus("verarbeitet", label);
+      sendStatus("verarbeitet", MODE_LABELS[currentMode]);
       pillWindow?.webContents.send("jarvis:stop-recording");
       if (currentMode === "edit") {
         // Text lesen nachdem Cmd+Alt losgelassen wurden → kein Modifier-Konflikt
@@ -129,7 +151,10 @@ async function initialize(): Promise<void> {
       }
     },
     onDoubleTap: () => {
-      // Phase 3: Modus per Doppeltipp wechseln
+      const idx = MODES.indexOf(currentMode);
+      currentMode = MODES[(idx + 1) % MODES.length];
+      pillWindow?.webContents.send("jarvis:mode-update", currentMode);
+      console.log(`JARVIS: Modus (Doppeltipp) → "${currentMode}"`);
     },
   });
 
@@ -157,7 +182,19 @@ async function initialize(): Promise<void> {
       }
 
       console.log(`JARVIS: Modus="${currentMode}", selectedText.length=${selectedText.length}, transcript="${transcript}"`);
-      if (currentMode === "edit") {
+
+      if (currentMode === "conversation") {
+        // Gesprächsmodus: KI antworten lassen und vorlesen
+        const aiConfig = settings.getAiConfig();
+        if (!aiConfig) {
+          console.error("JARVIS: Kein KI-Schlüssel für Gesprächsmodus.");
+          sendStatus("bereit", "Gespräch");
+          return;
+        }
+        const answer = await new AnthropicProvider(aiConfig.apiKey).chat(transcript);
+        if (answer) startSpeaking(answer);
+        return; // sendStatus wird von startSpeaking/stopSpeaking übernommen
+      } else if (currentMode === "edit") {
         if (!selectedText) {
           console.error(
             "JARVIS: Bearbeiten-Modus aktiv, aber kein markierter Text gelesen.\n" +
@@ -166,7 +203,6 @@ async function initialize(): Promise<void> {
           sendStatus("bereit", "Bearbeiten");
           return;
         }
-        // Text-bearbeiten-Modus: Sprachbefehl per KI auf markierten Text anwenden
         const aiConfig = settings.getAiConfig();
         if (!aiConfig) {
           console.error(
@@ -204,5 +240,6 @@ app.on("window-all-closed", () => {
 });
 
 app.on("will-quit", async () => {
+  globalShortcut.unregisterAll();
   await platform?.unregisterHotkey();
 });
