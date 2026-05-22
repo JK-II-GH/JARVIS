@@ -7,7 +7,10 @@
       "Bash(brew install *)",
       "Bash(git init *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(screencapture -x /tmp/jarvis_test.png)",
+      "Bash(kill 45732)",
+      "Bash(pkill -f \"npm exec electron\")"
     ]
   }
 }
