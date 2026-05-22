@@ -7,9 +7,23 @@ const EDIT_SYSTEM_PROMPT =
   "Erklärungen, keine Anführungszeichen, keinen Rahmen.";
 
 const CHAT_SYSTEM_PROMPT =
-  "Du bist JARVIS, ein hilfreicher Sprach-KI-Assistent auf dem Desktop. " +
-  "Antworte prägnant und natürlich gesprochen — deine Antwort wird vorgelesen. " +
-  "Keine Markdown-Formatierung, keine Aufzählungszeichen, keine Überschriften.";
+  "Du bist JARVIS, ein Sprachassistent. Deine Antwort wird mit Text-to-Speech vorgelesen. " +
+  "Schreibe ausschließlich fließenden Fließtext — KEIN Markdown, keine Sternchen, keine Rauten, " +
+  "keine Bindestriche als Aufzählung, keine horizontalen Linien. " +
+  "Fasse dich kurz und natürlich.";
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/#{1,6}\s*/g, "")        // Überschriften
+    .replace(/\*\*([^*]+)\*\*/g, "$1") // Fett
+    .replace(/\*([^*]+)\*/g, "$1")     // Kursiv
+    .replace(/^[-*•]\s+/gm, "")       // Aufzählungspunkte
+    .replace(/---+/g, "")              // Trennlinien
+    .replace(/\n{2,}/g, ". ")         // Absätze → kurze Pause
+    .replace(/\n/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
 
 export class AnthropicProvider implements AIProvider {
   private readonly client: Anthropic;
@@ -30,38 +44,28 @@ export class AnthropicProvider implements AIProvider {
   }
 
   async chat(message: string): Promise<string> {
-    // Websuche über Anthropics eingebautes web_search-Tool (Beta)
+    // Websuche über Anthropics eingebautes server-seitiges web_search-Tool (Beta).
+    // Die Suche läuft vollständig server-seitig — kein Tool-Use-Round-Trip nötig.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const tools: any[] = [{ type: "web_search_20250305", name: "web_search" }];
+    const response = await (this.client.messages.create as any)(
+      {
+        model: "claude-sonnet-4-6",
+        max_tokens: 1024,
+        system: CHAT_SYSTEM_PROMPT,
+        tools: [{ type: "web_search_20250305", name: "web_search" }],
+        messages: [{ role: "user", content: message }],
+      },
+      { headers: { "anthropic-beta": "web-search-2025-03-05" } },
+    );
+
+    // Antwort besteht aus mehreren Text-Blöcken — alle zusammenführen
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const messages: any[] = [{ role: "user", content: message }];
+    const raw = response.content
+      .filter((b: any) => b.type === "text")
+      .map((b: any) => b.text as string)
+      .join(" ")
+      .trim();
 
-    for (let i = 0; i < 5; i++) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await (this.client.messages.create as any)(
-        { model: "claude-sonnet-4-6", max_tokens: 1024, system: CHAT_SYSTEM_PROMPT, tools, messages },
-        { headers: { "anthropic-beta": "web-search-2025-03-05" } },
-      );
-
-      if (response.stop_reason === "end_turn") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const text = response.content.find((b: any) => b.type === "text");
-        return text?.text.trim() ?? "";
-      }
-
-      if (response.stop_reason === "tool_use") {
-        messages.push({ role: "assistant", content: response.content });
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const results = response.content
-          .filter((b: any) => b.type === "tool_use")
-          .map((b: any) => ({ type: "tool_result", tool_use_id: b.id, content: [] }));
-        if (results.length) messages.push({ role: "user", content: results });
-      } else {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const text = response.content.find((b: any) => b.type === "text");
-        return text?.text.trim() ?? "";
-      }
-    }
-    return "";
+    return stripMarkdown(raw);
   }
 }
