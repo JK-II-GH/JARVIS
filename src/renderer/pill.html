@@ -10,7 +10,6 @@
     body {
       background: transparent;
       overflow: hidden;
-      -webkit-app-region: drag;
       user-select: none;
     }
 
@@ -29,6 +28,8 @@
         0 4px 24px rgba(0, 0, 0, 0.40),
         inset 0 1px 0 rgba(255, 255, 255, 0.06);
       margin: 4px;
+      /* Pille ist ziehbar, außer beim Modus-Badge */
+      -webkit-app-region: drag;
     }
 
     .indikator {
@@ -74,6 +75,22 @@
       text-transform: uppercase;
       letter-spacing: 0.06em;
       margin-left: auto;
+      padding: 2px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      /* Klicks durchlassen, kein Drag */
+      -webkit-app-region: no-drag;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .modus-badge:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: rgba(255, 255, 255, 0.75);
+    }
+
+    .modus-badge.aktiv {
+      background: rgba(99, 179, 237, 0.25);
+      color: rgba(147, 210, 255, 0.9);
     }
   </style>
 </head>
@@ -81,7 +98,7 @@
   <div class="pille">
     <div class="indikator" id="indikator"></div>
     <span class="status-text" id="statusText">Bereit</span>
-    <span class="modus-badge" id="modusBadge">Diktat</span>
+    <span class="modus-badge" id="modusBadge" title="Klicken zum Wechseln">Diktat</span>
   </div>
 
   <script>
@@ -89,26 +106,39 @@
     const statusText  = document.getElementById('statusText');
     const modusBadge  = document.getElementById('modusBadge');
 
-    // Aufnahme-Zustand (Web Audio API → WAV, kein MediaRecorder-Codec nötig)
-    let audioCtx   = null;
-    let micStream  = null;
-    let processor  = null;
-    let pcmChunks  = [];
+    const MODI = ['Diktat', 'Bearbeiten'];
+    let modusIndex = 0; // 0 = Diktat, 1 = Bearbeiten
+    let aufnahmeAktiv = false;
+
+    // ── Modus-Umschalter ────────────────────────────────────────────────────
+
+    modusBadge.addEventListener('click', () => {
+      if (aufnahmeAktiv) return; // kein Wechsel während Aufnahme
+      modusIndex = (modusIndex + 1) % MODI.length;
+      const modus = MODI[modusIndex];
+      modusBadge.textContent = modus;
+      modusBadge.classList.toggle('aktiv', modusIndex !== 0);
+      window.jarvis.setMode(modusIndex === 0 ? 'dictation' : 'edit');
+    });
+
+    // ── Status ──────────────────────────────────────────────────────────────
 
     const statusConfig = {
       bereit:       { text: 'Bereit',          klass: '' },
-      aufnahme:     { text: 'Hört zu …',       klass: 'aufnahme' },
-      verarbeitet:  { text: 'Verarbeitet …',   klass: 'verarbeitet' },
+      aufnahme:     { text: 'Hoert zu ...',    klass: 'aufnahme' },
+      verarbeitet:  { text: 'Verarbeitet ...', klass: 'verarbeitet' },
     };
 
     function setStatus(status, modus) {
       const cfg = statusConfig[status] || statusConfig.bereit;
-      statusText.textContent  = cfg.text;
-      indikator.className     = 'indikator ' + cfg.klass;
+      statusText.textContent = cfg.text;
+      indikator.className    = 'indikator ' + cfg.klass;
+      aufnahmeAktiv = (status !== 'bereit');
       if (modus) modusBadge.textContent = modus;
     }
 
-    // WAV-Encoder: Float32 PCM → WAV ArrayBuffer (16-bit Mono)
+    // ── WAV-Encoder: Float32 PCM → 16-bit Mono WAV ─────────────────────────
+
     function encodeWav(samples, sampleRate) {
       const buf  = new ArrayBuffer(44 + samples.length * 2);
       const view = new DataView(buf);
@@ -116,13 +146,13 @@
 
       str(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true);
       str(8, 'WAVE'); str(12, 'fmt ');
-      view.setUint32(16, 16, true);           // fmt-Chunk-Größe
-      view.setUint16(20, 1, true);            // PCM
-      view.setUint16(22, 1, true);            // Mono
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);           // PCM
+      view.setUint16(22, 1, true);           // Mono
       view.setUint32(24, sampleRate, true);
       view.setUint32(28, sampleRate * 2, true);
       view.setUint16(32, 2, true);
-      view.setUint16(34, 16, true);           // 16 Bit
+      view.setUint16(34, 16, true);
       str(36, 'data'); view.setUint32(40, samples.length * 2, true);
 
       let off = 44;
@@ -134,15 +164,22 @@
       return buf;
     }
 
-    // ── Aufnahme starten ────────────────────────────────────────────────────
+    // ── Aufnahme ────────────────────────────────────────────────────────────
+
+    let audioCtx  = null;
+    let micStream = null;
+    let processor = null;
+    let pcmChunks = [];
 
     window.jarvis.onStartRecording(async () => {
       pcmChunks = [];
       try {
+        // Nativen Sample-Rate verwenden — erzwungene 16 kHz werden von macOS
+        // ignoriert und führen zu falschem WAV-Header → Whisper-Halluzinationen
         micStream = await navigator.mediaDevices.getUserMedia({
-          audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }
         });
-        audioCtx  = new AudioContext({ sampleRate: 16000 });
+        audioCtx  = new AudioContext();
         const src = audioCtx.createMediaStreamSource(micStream);
         processor = audioCtx.createScriptProcessor(4096, 1, 1);
 
@@ -157,28 +194,29 @@
       }
     });
 
-    // ── Aufnahme stoppen + WAV senden ──────────────────────────────────────
-
     window.jarvis.onStopRecording(() => {
       if (!processor) return;
 
+      const nativeSampleRate = audioCtx.sampleRate;
       processor.disconnect();
       micStream.getTracks().forEach(t => t.stop());
       audioCtx.close();
       processor = null;
 
       const totalLen = pcmChunks.reduce((n, c) => n + c.length, 0);
-      if (totalLen < 4800) return; // weniger als 0,3 s → überspringen
+      // Mindestens ~0,3 s bei nativem Sample-Rate
+      if (totalLen < nativeSampleRate * 0.3) return;
 
       const pcm = new Float32Array(totalLen);
       let off = 0;
       for (const c of pcmChunks) { pcm.set(c, off); off += c.length; }
       pcmChunks = [];
 
-      window.jarvis.sendAudioData(encodeWav(pcm, 16000), 'audio/wav');
+      // Nativen Sample-Rate korrekt in WAV-Header schreiben
+      window.jarvis.sendAudioData(encodeWav(pcm, nativeSampleRate), 'audio/wav');
     });
 
-    // ── Status-Updates vom Main-Prozess ────────────────────────────────────
+    // ── IPC vom Main-Prozess ────────────────────────────────────────────────
 
     window.jarvis.onStatusUpdate((status, modus) => setStatus(status, modus));
   </script>

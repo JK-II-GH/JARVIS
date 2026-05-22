@@ -97,31 +97,40 @@ async function initialize(): Promise<void> {
     });
   }
 
+  // Modus-Wechsel vom Renderer (Klick auf Modus-Badge)
+  ipcMain.on("jarvis:set-mode", (_, mode: string) => {
+    currentMode = mode as "dictation" | "edit";
+  });
+
   // Hotkey: Cmd+Alt halten
   await platform.registerHotkey({
     onHoldStart: () => {
-      // Markierten Text lesen und Modus bestimmen (bevor Aufnahme startet)
-      (async () => {
-        currentSelectedText = await platform.readSelectedText();
-        currentMode = currentSelectedText ? "edit" : "dictation";
-        const modusLabel = currentMode === "edit" ? "Bearbeiten" : "Diktat";
-        sendStatus("aufnahme", modusLabel);
-        pillWindow?.webContents.send("jarvis:start-recording");
-      })().catch((err) => {
-        console.error("JARVIS: Modus-Erkennung fehlgeschlagen:", err);
-        currentMode = "dictation";
+      const label = currentMode === "edit" ? "Bearbeiten" : "Diktat";
+      if (currentMode === "edit") {
+        // Markierten Text lesen, dann Aufnahme starten
+        platform.readSelectedText()
+          .then((text) => {
+            currentSelectedText = text;
+            sendStatus("aufnahme", label);
+            pillWindow?.webContents.send("jarvis:start-recording");
+          })
+          .catch(() => {
+            currentSelectedText = "";
+            sendStatus("aufnahme", label);
+            pillWindow?.webContents.send("jarvis:start-recording");
+          });
+      } else {
         currentSelectedText = "";
         sendStatus("aufnahme", "Diktat");
         pillWindow?.webContents.send("jarvis:start-recording");
-      });
+      }
     },
     onHoldEnd: () => {
-      const modusLabel = currentMode === "edit" ? "Bearbeiten" : "Diktat";
-      sendStatus("verarbeitet", modusLabel);
+      sendStatus("verarbeitet", currentMode === "edit" ? "Bearbeiten" : "Diktat");
       pillWindow?.webContents.send("jarvis:stop-recording");
     },
     onDoubleTap: () => {
-      // Phase 3: Modus manuell wechseln
+      // Phase 3: Modus per Doppeltipp wechseln
     },
   });
 
