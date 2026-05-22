@@ -12,7 +12,8 @@ let settings: SettingsManager;
 
 // Zustand des aktuellen Vorgangs
 let currentMode: "dictation" | "edit" = "dictation";
-let currentSelectedText = "";
+// Im Bearbeiten-Modus: Promise das beim Loslassen des Hotkeys gestartet wird
+let pendingSelectedText: Promise<string> | null = null;
 
 // ── Pille ──────────────────────────────────────────────────────────────────
 
@@ -107,29 +108,25 @@ async function initialize(): Promise<void> {
   await platform.registerHotkey({
     onHoldStart: () => {
       const label = currentMode === "edit" ? "Bearbeiten" : "Diktat";
-      if (currentMode === "edit") {
-        // Markierten Text lesen, dann Aufnahme starten
-        platform.readSelectedText()
-          .then((text) => {
-            currentSelectedText = text;
-            console.log(`JARVIS: markierter Text = "${text.slice(0, 60)}..." (${text.length} Zeichen)`);
-            sendStatus("aufnahme", label);
-            pillWindow?.webContents.send("jarvis:start-recording");
-          })
-          .catch(() => {
-            currentSelectedText = "";
-            sendStatus("aufnahme", label);
-            pillWindow?.webContents.send("jarvis:start-recording");
-          });
-      } else {
-        currentSelectedText = "";
-        sendStatus("aufnahme", "Diktat");
-        pillWindow?.webContents.send("jarvis:start-recording");
-      }
+      // Aufnahme sofort starten — Text wird erst beim Loslassen gelesen,
+      // damit Cmd+Alt nicht mehr gehalten sind und Cmd+C sauber ankommt
+      pendingSelectedText = null;
+      sendStatus("aufnahme", label);
+      pillWindow?.webContents.send("jarvis:start-recording");
     },
     onHoldEnd: () => {
-      sendStatus("verarbeitet", currentMode === "edit" ? "Bearbeiten" : "Diktat");
+      const label = currentMode === "edit" ? "Bearbeiten" : "Diktat";
+      sendStatus("verarbeitet", label);
       pillWindow?.webContents.send("jarvis:stop-recording");
+      if (currentMode === "edit") {
+        // Text lesen nachdem Cmd+Alt losgelassen wurden → kein Modifier-Konflikt
+        pendingSelectedText = platform.readSelectedText()
+          .then((text) => {
+            console.log(`JARVIS: markierter Text = "${text.slice(0, 60)}..." (${text.length} Zeichen)`);
+            return text;
+          })
+          .catch(() => "");
+      }
     },
     onDoubleTap: () => {
       // Phase 3: Modus per Doppeltipp wechseln
@@ -147,21 +144,24 @@ async function initialize(): Promise<void> {
         return;
       }
 
-      const transcript = await new WhisperProvider(sttConfig)
-        .transcribe(Buffer.from(data), mimeType);
+      // Transkription und Text-Lesen parallel — STT dauert ~1-2 s, mehr als genug Zeit
+      const [transcript, selectedText] = await Promise.all([
+        new WhisperProvider(sttConfig).transcribe(Buffer.from(data), mimeType),
+        pendingSelectedText ?? Promise.resolve(""),
+      ]);
+      pendingSelectedText = null;
 
       if (!transcript) {
         sendStatus("bereit", modusLabel);
         return;
       }
 
-      console.log(`JARVIS: Modus="${currentMode}", selectedText.length=${currentSelectedText.length}, transcript="${transcript}"`);
+      console.log(`JARVIS: Modus="${currentMode}", selectedText.length=${selectedText.length}, transcript="${transcript}"`);
       if (currentMode === "edit") {
-        if (!currentSelectedText) {
-          // Kein Text markiert — Bedienungshilfen-Berechtigung fehlt wahrscheinlich
+        if (!selectedText) {
           console.error(
             "JARVIS: Bearbeiten-Modus aktiv, aber kein markierter Text gelesen.\n" +
-            "Prüfe: Systemeinstellungen → Datenschutz & Sicherheit → Bedienungshilfen → Electron.app aktiviert?",
+            "Text vor dem Hotkey markieren und Bedienungshilfen-Berechtigung prüfen.",
           );
           sendStatus("bereit", "Bearbeiten");
           return;
@@ -177,7 +177,7 @@ async function initialize(): Promise<void> {
           return;
         }
         const result = await new AnthropicProvider(aiConfig.apiKey)
-          .process(currentSelectedText, transcript);
+          .process(selectedText, transcript);
         if (result) await platform.insertText(result);
       } else {
         // Diktat-Modus: Transkript einfügen

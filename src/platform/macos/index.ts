@@ -26,26 +26,16 @@ export class MacOSAdapter implements PlatformAdapter {
     const previous = clipboard.readText();
     clipboard.writeText(sentinel);
 
-    // Markierten Text über Accessibility-API lesen — keine Tastensimulation,
-    // damit der gehaltene Hotkey nicht vorzeitig ausgelöst wird
-    const lines = [
-      `tell application "System Events"`,
-      `  set frontApp to first application process whose frontmost is true`,
-      `  tell frontApp`,
-      `    try`,
-      `      set sel to value of attribute "AXSelectedText" of (focused UI element)`,
-      `      if sel is missing value then return ""`,
-      `      return sel`,
-      `    on error`,
-      `      return ""`,
-      `    end try`,
-      `  end tell`,
-      `end tell`,
-    ];
-    const args = lines.map((l) => `-e ${JSON.stringify(l)}`).join(" ");
-    const { stdout } = await execAsync(`osascript ${args}`).catch(() => ({ stdout: "" }));
-    clipboard.writeText(previous); // Zwischenablage wiederherstellen
-    return stdout.trim();
+    // Cmd+C simulieren — wird erst nach Loslassen des Hotkeys aufgerufen,
+    // damit keine Modifier-Tasten mehr gehalten sind
+    await execAsync(
+      `osascript -e 'tell application "System Events" to keystroke "c" using {command down}'`,
+    );
+    await new Promise<void>((r) => setTimeout(r, 200));
+
+    const selected = clipboard.readText();
+    clipboard.writeText(previous);
+    return selected === sentinel ? "" : selected;
   }
 
   async insertText(text: string): Promise<void> {
