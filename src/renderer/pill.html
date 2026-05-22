@@ -5,11 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>JARVIS</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
       background: transparent;
@@ -32,7 +28,6 @@
       box-shadow:
         0 4px 24px rgba(0, 0, 0, 0.40),
         inset 0 1px 0 rgba(255, 255, 255, 0.06);
-      cursor: default;
       margin: 4px;
     }
 
@@ -43,18 +38,19 @@
       background: #4ade80;
       box-shadow: 0 0 6px #4ade80;
       flex-shrink: 0;
-    }
-
-    .indikator.verarbeitet {
-      background: #facc15;
-      box-shadow: 0 0 6px #facc15;
-      animation: pulsieren 1s ease-in-out infinite;
+      transition: background 0.2s, box-shadow 0.2s;
     }
 
     .indikator.aufnahme {
       background: #f87171;
       box-shadow: 0 0 8px #f87171;
       animation: pulsieren 0.6s ease-in-out infinite;
+    }
+
+    .indikator.verarbeitet {
+      background: #facc15;
+      box-shadow: 0 0 6px #facc15;
+      animation: pulsieren 1s ease-in-out infinite;
     }
 
     @keyframes pulsieren {
@@ -87,5 +83,83 @@
     <span class="status-text" id="statusText">Bereit</span>
     <span class="modus-badge" id="modusBadge">Diktat</span>
   </div>
+
+  <script>
+    const indikator   = document.getElementById('indikator');
+    const statusText  = document.getElementById('statusText');
+    const modusBadge  = document.getElementById('modusBadge');
+
+    let mediaRecorder = null;
+    let audioChunks   = [];
+    let mimeType      = 'audio/webm';
+
+    const statusConfig = {
+      bereit:       { text: 'Bereit',          klass: '' },
+      aufnahme:     { text: 'Hört zu …',       klass: 'aufnahme' },
+      verarbeitet:  { text: 'Verarbeitet …',   klass: 'verarbeitet' },
+    };
+
+    function setStatus(status, modus) {
+      const cfg = statusConfig[status] || statusConfig.bereit;
+      statusText.textContent  = cfg.text;
+      indikator.className     = 'indikator ' + cfg.klass;
+      if (modus) modusBadge.textContent = modus;
+    }
+
+    function bestAudioFormat() {
+      const candidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/mp4',
+      ];
+      return candidates.find(f => MediaRecorder.isTypeSupported(f)) || '';
+    }
+
+    // ── Aufnahme starten ────────────────────────────────────────────────────
+
+    window.jarvis.onStartRecording(async () => {
+      audioChunks = [];
+      mimeType    = bestAudioFormat() || 'audio/webm';
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const opts   = mimeType ? { mimeType } : {};
+        mediaRecorder = new MediaRecorder(stream, opts);
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunks.push(e.data);
+        };
+
+        mediaRecorder.start(100);
+      } catch (err) {
+        console.error('JARVIS Renderer: Mikrofon-Fehler:', err);
+        setStatus('bereit');
+      }
+    });
+
+    // ── Aufnahme stoppen + Daten senden ────────────────────────────────────
+
+    window.jarvis.onStopRecording(() => {
+      if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+
+      mediaRecorder.onstop = async () => {
+        const blob  = new Blob(audioChunks, { type: mimeType });
+        const ab    = await blob.arrayBuffer();
+        window.jarvis.sendAudioData(ab, mimeType.split(';')[0]);
+
+        // Mikrofon-Stream freigeben
+        mediaRecorder.stream.getTracks().forEach(t => t.stop());
+        mediaRecorder = null;
+        audioChunks   = [];
+      };
+
+      mediaRecorder.stop();
+    });
+
+    // ── Status-Updates vom Main-Prozess ────────────────────────────────────
+
+    window.jarvis.onStatusUpdate((status, modus) => setStatus(status, modus));
+  </script>
 </body>
 </html>

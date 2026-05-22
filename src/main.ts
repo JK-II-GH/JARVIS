@@ -1,7 +1,15 @@
-import { app, BrowserWindow, screen } from "electron";
+import { app, BrowserWindow, screen, ipcMain, dialog } from "electron";
 import * as path from "path";
+import { createPlatformAdapter } from "./platform/index";
+import type { PlatformAdapter } from "./platform/index";
+import { SettingsManager } from "./core/settings";
+import { WhisperProvider } from "./core/stt/WhisperProvider";
 
 let pillWindow: BrowserWindow | null = null;
+let platform: PlatformAdapter;
+let settings: SettingsManager;
+
+// ── Pille ──────────────────────────────────────────────────────────────────
 
 function createPillWindow(): void {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
@@ -27,26 +35,101 @@ function createPillWindow(): void {
 
   pillWindow.loadFile(path.join(__dirname, "../src/renderer/pill.html"));
 
-  // Verhindert, dass ein Klick auf die Pille den Fokus stiehlt
-  pillWindow.setIgnoreMouseEvents(false);
-
   pillWindow.on("closed", () => {
     pillWindow = null;
   });
 }
 
+function sendStatus(status: "bereit" | "aufnahme" | "verarbeitet", modus = "Diktat"): void {
+  pillWindow?.webContents.send("jarvis:status-update", status, modus);
+}
+
+// ── Start ──────────────────────────────────────────────────────────────────
+
+async function initialize(): Promise<void> {
+  settings = new SettingsManager();
+  platform = createPlatformAdapter();
+
+  // Mikrofon-Berechtigung sicherstellen
+  const perms = await platform.checkPermissions();
+  if (!perms.microphone) {
+    const { response } = await dialog.showMessageBox({
+      type: "warning",
+      title: "JARVIS — Mikrofon-Zugriff",
+      message: "Mikrofon-Berechtigung fehlt",
+      detail: "JARVIS benötigt Zugriff auf das Mikrofon, um Diktat aufzunehmen.",
+      buttons: ["Einstellungen öffnen", "Abbrechen"],
+    });
+    if (response === 0) await platform.openPermissionSettings("microphone");
+  }
+
+  // API-Schlüssel prüfen
+  if (!settings.openaiApiKey) {
+    dialog.showMessageBox({
+      type: "info",
+      title: "JARVIS — Einrichtung",
+      message: "OpenAI-API-Schlüssel fehlt",
+      detail:
+        `Bitte trage deinen Schlüssel in diese Datei ein:\n${settings.settingsFilePath}\n\n` +
+        `Beispiel:\n{\n  "openaiApiKey": "sk-..."\n}`,
+      buttons: ["OK"],
+    });
+  }
+
+  // Hotkey registrieren: Cmd+Alt halten = aufnehmen
+  await platform.registerHotkey({
+    onHoldStart: () => {
+      sendStatus("aufnahme");
+      pillWindow?.webContents.send("jarvis:start-recording");
+    },
+    onHoldEnd: () => {
+      sendStatus("verarbeitet");
+      pillWindow?.webContents.send("jarvis:stop-recording");
+    },
+    onDoubleTap: () => {
+      // Phase 3: Modus wechseln
+    },
+  });
+
+  // Audio-Daten vom Renderer empfangen und transkribieren
+  ipcMain.on("jarvis:audio-data", async (_, data: ArrayBuffer, mimeType: string) => {
+    try {
+      const apiKey = settings.openaiApiKey;
+      if (!apiKey) {
+        console.error("JARVIS: Kein API-Schlüssel konfiguriert.");
+        sendStatus("bereit");
+        return;
+      }
+
+      const whisper = new WhisperProvider(apiKey);
+      const transcript = await whisper.transcribe(Buffer.from(data), mimeType);
+
+      if (transcript) {
+        await platform.insertText(transcript);
+      }
+    } catch (err) {
+      console.error("JARVIS: Transkriptionsfehler:", err);
+    } finally {
+      sendStatus("bereit");
+    }
+  });
+}
+
+// ── App-Lebenszyklus ───────────────────────────────────────────────────────
+
 app.whenReady().then(() => {
   createPillWindow();
+  initialize().catch((err) => console.error("JARVIS: Initialisierungsfehler:", err));
 
   app.on("activate", () => {
-    if (pillWindow === null) {
-      createPillWindow();
-    }
+    if (!pillWindow) createPillWindow();
   });
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+  if (process.platform !== "darwin") app.quit();
+});
+
+app.on("will-quit", async () => {
+  await platform?.unregisterHotkey();
 });

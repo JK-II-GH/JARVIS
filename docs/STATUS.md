@@ -3,7 +3,7 @@
 > Phasen werden der Reihe nach abgearbeitet. Claude Code hakt erledigte Punkte
 > ab und ergänzt Erkenntnisse unten.
 >
-> **Aktuelle Phase: 1**
+> **Aktuelle Phase: 2**
 
 ## Phase 0 — Projektgerüst ✅
 
@@ -13,14 +13,14 @@
 - [x] App startet, eine leere Pille erscheint als Overlay
 - [x] Git-Repository initialisiert
 
-## Phase 1 — Diktat-Modus (kleinstes lauffähiges MVP)
+## Phase 1 — Diktat-Modus ✅
 
-- [ ] Globaler Hotkey mit Halten + Loslassen (natives Key-Listener-Modul)
-- [ ] macOS-Berechtigungen anfragen/prüfen: Mikrofon, Eingabeüberwachung
-- [ ] Mikrofonaufnahme, solange die Tasten gehalten werden
-- [ ] `STTProvider`-Schnittstelle + Whisper-API-Implementierung
-- [ ] Transkript wird an der Cursorposition eingefügt
-- [ ] Pille zeigt Status: bereit / hört zu / verarbeitet
+- [x] Globaler Hotkey mit Halten + Loslassen (natives Key-Listener-Modul)
+- [x] macOS-Berechtigungen anfragen/prüfen: Mikrofon, Eingabeüberwachung
+- [x] Mikrofonaufnahme, solange die Tasten gehalten werden
+- [x] `STTProvider`-Schnittstelle + Whisper-API-Implementierung
+- [x] Transkript wird an der Cursorposition eingefügt
+- [x] Pille zeigt Status: bereit / hört zu / verarbeitet
 
 ## Phase 2 — Text bearbeiten
 
@@ -60,3 +60,8 @@
 - **pill.html-Pfad**: `main.js` liegt in `dist/`, `pill.html` in `src/renderer/`. Relativer Pfad `../src/renderer/pill.html` von `__dirname` (=`dist/`) aus ist korrekt.
 - **screencapture**: Benötigt Bildschirmaufnahme-Berechtigung — steht beim ersten Start-Test nicht zur Verfügung. Visueller Test muss direkt am Gerät erfolgen.
 - **Starten**: `export PATH="/opt/homebrew/opt/node@22/bin:$PATH" && npm run dev` im Projektverzeichnis.
+- **uiohook-napi**: Verwendet N-API — funktioniert ohne electron-rebuild mit Electron 36. Hotkey: linke oder rechte Cmd-Taste + Option-Taste gleichzeitig halten.
+- **Hotkey-Berechtigung**: `uiohook-napi` benötigt macOS Eingabeüberwachung (Systemeinstellungen → Datenschutz → Eingabeüberwachung). Ohne diese Berechtigung feuern die Events nicht, die App läuft aber stabil weiter.
+- **API-Schlüssel**: Beim ersten Start ohne Schlüssel zeigt die App einen Dialog mit dem Pfad zu `settings.json` im userData-Verzeichnis (`~/Library/Application Support/jarvis/settings.json`).
+- **Audioformat**: Renderer wählt automatisch das beste unterstützte Format (`audio/webm;codecs=opus` bevorzugt). Whisper-API unterstützt WebM nativ.
+- **Texteinfügen**: Über Zwischenablage + AppleScript (`keystroke "v" using {command down}`). Vorheriger Clipboard-Inhalt wird nach 150 ms wiederhergestellt.

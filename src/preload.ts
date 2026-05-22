@@ -1,7 +1,19 @@
-import { contextBridge } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 
-// Sichere Bridge zwischen Main-Prozess und Renderer.
-// In Phase 1 werden hier Hotkey-Ereignisse und Status-Updates durchgeleitet.
 contextBridge.exposeInMainWorld("jarvis", {
-  version: "0.1.0",
+  // Renderer → Main
+  sendAudioData: (data: ArrayBuffer, mimeType: string) =>
+    ipcRenderer.send("jarvis:audio-data", data, mimeType),
+
+  // Main → Renderer
+  onStartRecording: (cb: () => void) =>
+    ipcRenderer.on("jarvis:start-recording", () => cb()),
+
+  onStopRecording: (cb: () => void) =>
+    ipcRenderer.on("jarvis:stop-recording", () => cb()),
+
+  onStatusUpdate: (cb: (status: string, modus: string) => void) =>
+    ipcRenderer.on("jarvis:status-update", (_, status: string, modus: string) =>
+      cb(status, modus),
+    ),
 });

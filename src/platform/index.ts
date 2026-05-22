@@ -69,14 +69,12 @@ export interface PlatformAdapter {
   stopSpeaking(): void;
 }
 
-/**
- * Liefert die Implementierung fuer das aktuelle Betriebssystem.
- * Wird in Phase 1 mit der macOS-Implementierung aus src/platform/macos
- * verbunden.
- */
+/** Liefert die Implementierung fuer das aktuelle Betriebssystem. */
 export function createPlatformAdapter(): PlatformAdapter {
-  throw new Error(
-    "Noch nicht implementiert — in Phase 1 die macOS-Implementierung anlegen " +
-      "(src/platform/macos) und hier zurueckgeben.",
-  );
+  if (process.platform === "darwin") {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { MacOSAdapter } = require("./macos/index") as typeof import("./macos/index");
+    return new MacOSAdapter();
+  }
+  throw new Error(`Plattform nicht unterstuetzt: ${process.platform}`);
 }

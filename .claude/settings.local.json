@@ -10,7 +10,8 @@
       "Bash(git commit -m ' *)",
       "Bash(screencapture -x /tmp/jarvis_test.png)",
       "Bash(kill 45732)",
-      "Bash(pkill -f \"npm exec electron\")"
+      "Bash(pkill -f \"npm exec electron\")",
+      "Bash(pkill -f \"node_modules/electron/dist/Electron.app\")"
     ]
   }
 }
