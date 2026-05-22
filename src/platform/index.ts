@@ -1,0 +1,82 @@
+/**
+ * JARVIS — Platform-Adapter-Schnittstelle
+ *
+ * Dies ist der architektonische Schluessel des Projekts: ALLES, was sich
+ * zwischen macOS und Windows unterscheidet, laeuft ueber diese Schnittstelle.
+ *
+ * Kernlogik (src/core) und Oberflaeche (src/renderer) duerfen NUR diesen
+ * Typ benutzen — niemals direkt Betriebssystem-APIs.
+ *
+ * Implementierungen:
+ *   - src/platform/macos    (jetzt)
+ *   - src/platform/windows  (spaeter)
+ */
+
+/** Aktueller Bedienmodus der App. */
+export type Mode =
+  | "dictation"
+  | "edit"
+  | "conversation"
+  | "fileContext"
+  | "feedback";
+
+/** Status der vom Nutzer zu erteilenden Systemberechtigungen. */
+export interface PermissionStatus {
+  /** Mikrofon — noetig fuer die Sprachaufnahme. */
+  microphone: boolean;
+  /** Eingabeueberwachung — noetig fuer die globale Tastenerfassung. */
+  inputMonitoring: boolean;
+  /** Bedienungshilfen — noetig zum Lesen und Einfuegen von Text. */
+  accessibility: boolean;
+}
+
+/** Ereignisse des globalen Hotkeys. */
+export interface HotkeyHandlers {
+  /** Tasten wurden gedrueckt und gehalten — Aufnahme startet. */
+  onHoldStart: () => void;
+  /** Tasten wurden losgelassen — Aufnahme endet. */
+  onHoldEnd: () => void;
+  /** Doppeltipp auf die Tastenkombination — Moduswechsel. */
+  onDoubleTap: () => void;
+}
+
+/**
+ * Plattformspezifische Funktionen. Jede Zielplattform liefert genau
+ * eine Implementierung dieser Schnittstelle.
+ */
+export interface PlatformAdapter {
+  /** Name der Plattform, z. B. "macos". */
+  readonly name: string;
+
+  /** Registriert den globalen Hotkey (Halten + Doppeltipp). */
+  registerHotkey(handlers: HotkeyHandlers): Promise<void>;
+  /** Entfernt den globalen Hotkey wieder. */
+  unregisterHotkey(): Promise<void>;
+
+  /** Liest den aktuell markierten Text der aktiven Anwendung. */
+  readSelectedText(): Promise<string>;
+  /** Fuegt Text an der aktuellen Cursorposition ein. */
+  insertText(text: string): Promise<void>;
+
+  /** Prueft, welche Systemberechtigungen bereits erteilt sind. */
+  checkPermissions(): Promise<PermissionStatus>;
+  /** Oeffnet die passenden Systemeinstellungen fuer eine fehlende Berechtigung. */
+  openPermissionSettings(permission: keyof PermissionStatus): Promise<void>;
+
+  /** Liest Text ueber die System-Sprachausgabe vor (TTS). */
+  speak(text: string): Promise<void>;
+  /** Bricht eine laufende Sprachausgabe ab. */
+  stopSpeaking(): void;
+}
+
+/**
+ * Liefert die Implementierung fuer das aktuelle Betriebssystem.
+ * Wird in Phase 1 mit der macOS-Implementierung aus src/platform/macos
+ * verbunden.
+ */
+export function createPlatformAdapter(): PlatformAdapter {
+  throw new Error(
+    "Noch nicht implementiert — in Phase 1 die macOS-Implementierung anlegen " +
+      "(src/platform/macos) und hier zurueckgeben.",
+  );
+}

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JARVIS</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: transparent;
+      overflow: hidden;
+      -webkit-app-region: drag;
+      user-select: none;
+    }
+
+    .pille {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 16px;
+      height: 40px;
+      background: rgba(20, 20, 20, 0.88);
+      backdrop-filter: blur(16px) saturate(180%);
+      -webkit-backdrop-filter: blur(16px) saturate(180%);
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.10);
+      box-shadow:
+        0 4px 24px rgba(0, 0, 0, 0.40),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      cursor: default;
+      margin: 4px;
+    }
+
+    .indikator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4ade80;
+      box-shadow: 0 0 6px #4ade80;
+      flex-shrink: 0;
+    }
+
+    .indikator.verarbeitet {
+      background: #facc15;
+      box-shadow: 0 0 6px #facc15;
+      animation: pulsieren 1s ease-in-out infinite;
+    }
+
+    .indikator.aufnahme {
+      background: #f87171;
+      box-shadow: 0 0 8px #f87171;
+      animation: pulsieren 0.6s ease-in-out infinite;
+    }
+
+    @keyframes pulsieren {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+    }
+
+    .status-text {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.85);
+      letter-spacing: 0.01em;
+    }
+
+    .modus-badge {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.45);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-left: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="pille">
+    <div class="indikator" id="indikator"></div>
+    <span class="status-text" id="statusText">Bereit</span>
+    <span class="modus-badge" id="modusBadge">Diktat</span>
+  </div>
+</body>
+</html>

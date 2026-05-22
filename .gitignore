@@ -1,0 +1,20 @@
+# Abhaengigkeiten
+node_modules/
+
+# Build-Ausgaben
+dist/
+release/
+out/
+
+# Schluessel und lokale Konfiguration — NIEMALS einchecken
+.env
+*.key
+secrets.json
+
+# Betriebssystem
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
