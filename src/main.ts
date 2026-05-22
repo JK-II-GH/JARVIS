@@ -178,9 +178,9 @@ async function initialize(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require("fs") as typeof import("fs");
     const raw = JSON.parse(fs.readFileSync(settings.settingsFilePath, "utf-8") || "{}");
-    if (data.anthropicKey) raw.anthropicApiKey = data.anthropicKey;
-    if (data.openaiKey)    raw.openaiApiKey    = data.openaiKey;
-    if (data.groqKey)      raw.groqApiKey      = data.groqKey;
+    if (data.anthropicKey) raw.anthropicApiKey = data.anthropicKey; else delete raw.anthropicApiKey;
+    if (data.openaiKey)    raw.openaiApiKey    = data.openaiKey;    else delete raw.openaiApiKey;
+    if (data.groqKey)      raw.groqApiKey      = data.groqKey;      else delete raw.groqApiKey;
     raw.aiProvider = data.aiProvider || "anthropic";
     fs.writeFileSync(settings.settingsFilePath, JSON.stringify(raw, null, 2));
     settings = new SettingsManager();

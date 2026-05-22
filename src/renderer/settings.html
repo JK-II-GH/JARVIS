@@ -98,6 +98,28 @@
 
     .eye-btn:hover { color: rgba(255,255,255,0.65); }
 
+    .clear-btn {
+      position: absolute;
+      right: 30px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      padding: 2px;
+      cursor: pointer;
+      color: rgba(255,255,255,0.3);
+      font-size: 13px;
+      line-height: 1;
+      transition: color 0.15s;
+      user-select: none;
+    }
+
+    .clear-btn:hover { color: rgba(248,113,113,0.8); }
+
+    .input-wrap input {
+      padding-right: 54px;
+    }
+
     select option { background: #2c2c2e; }
 
     .hint {
@@ -174,7 +196,8 @@
       <label>Anthropic API-Key</label>
       <div class="input-wrap">
         <input type="password" id="anthropicKey" placeholder="sk-ant-..." autocomplete="off" />
-        <button class="eye-btn" data-target="anthropicKey" tabindex="-1">👁</button>
+        <button class="clear-btn" data-target="anthropicKey" tabindex="-1" title="Löschen">✕</button>
+        <button class="eye-btn" data-target="anthropicKey" tabindex="-1" title="Anzeigen">👁</button>
       </div>
     </div>
     <div class="hint"><a href="#" data-url="https://console.anthropic.com/settings/keys">console.anthropic.com/settings/keys</a></div>
@@ -182,7 +205,8 @@
       <label>OpenAI API-Key</label>
       <div class="input-wrap">
         <input type="password" id="openaiKey" placeholder="sk-..." autocomplete="off" />
-        <button class="eye-btn" data-target="openaiKey" tabindex="-1">👁</button>
+        <button class="clear-btn" data-target="openaiKey" tabindex="-1" title="Löschen">✕</button>
+        <button class="eye-btn" data-target="openaiKey" tabindex="-1" title="Anzeigen">👁</button>
       </div>
     </div>
     <div class="hint"><a href="#" data-url="https://platform.openai.com/api-keys">platform.openai.com/api-keys</a></div>
@@ -194,7 +218,8 @@
       <label>Groq API-Key</label>
       <div class="input-wrap">
         <input type="password" id="groqKey" placeholder="gsk_..." autocomplete="off" />
-        <button class="eye-btn" data-target="groqKey" tabindex="-1">👁</button>
+        <button class="clear-btn" data-target="groqKey" tabindex="-1" title="Löschen">✕</button>
+        <button class="eye-btn" data-target="groqKey" tabindex="-1" title="Anzeigen">👁</button>
       </div>
     </div>
     <div class="hint"><a href="#" data-url="https://console.groq.com/keys">console.groq.com/keys</a> — kostenlos</div>
@@ -238,6 +263,11 @@
         e.preventDefault();
         api.openExternal(a.getAttribute('data-url'));
       });
+    });
+
+    document.querySelectorAll('.clear-btn').forEach((btn) => {
+      const input = document.getElementById(btn.getAttribute('data-target'));
+      btn.addEventListener('click', () => { input.value = ''; input.focus(); });
     });
 
     document.querySelectorAll('.eye-btn').forEach((btn) => {
