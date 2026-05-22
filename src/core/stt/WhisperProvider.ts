@@ -3,16 +3,18 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { STTProvider } from "./STTProvider";
+import type { SttConfig } from "../settings";
 
 export class WhisperProvider implements STTProvider {
   private readonly client: OpenAI;
+  private readonly model: string;
 
-  constructor(apiKey: string) {
-    this.client = new OpenAI({ apiKey });
+  constructor(config: SttConfig) {
+    this.client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL });
+    this.model = config.model;
   }
 
   async transcribe(audio: Buffer, mimeType: string): Promise<string> {
-    // Erweiterung aus MIME-Typ ableiten
     const ext = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "mp4" : "webm";
     const tmpFile = path.join(os.tmpdir(), `jarvis_${Date.now()}.${ext}`);
 
@@ -20,7 +22,7 @@ export class WhisperProvider implements STTProvider {
     try {
       const response = await this.client.audio.transcriptions.create({
         file: fs.createReadStream(tmpFile),
-        model: "whisper-1",
+        model: this.model,
       });
       return response.text.trim();
     } finally {

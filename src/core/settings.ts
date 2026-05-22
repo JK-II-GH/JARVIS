@@ -4,6 +4,13 @@ import * as path from "path";
 
 interface SettingsData {
   openaiApiKey?: string;
+  groqApiKey?: string;
+}
+
+export interface SttConfig {
+  apiKey: string;
+  baseURL?: string;
+  model: string;
 }
 
 export class SettingsManager {
@@ -19,8 +26,22 @@ export class SettingsManager {
     return this.filePath;
   }
 
-  get openaiApiKey(): string | undefined {
-    return this.data.openaiApiKey;
+  // Groq hat Vorrang vor OpenAI, da kostenlos und schneller
+  getSttConfig(): SttConfig | null {
+    if (this.data.groqApiKey) {
+      return {
+        apiKey: this.data.groqApiKey,
+        baseURL: "https://api.groq.com/openai/v1",
+        model: "whisper-large-v3-turbo",
+      };
+    }
+    if (this.data.openaiApiKey) {
+      return {
+        apiKey: this.data.openaiApiKey,
+        model: "whisper-1",
+      };
+    }
+    return null;
   }
 
   private load(): SettingsData {
@@ -34,10 +55,5 @@ export class SettingsManager {
   private save(): void {
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
     fs.writeFileSync(this.filePath, JSON.stringify(this.data, null, 2));
-  }
-
-  setOpenAIKey(key: string): void {
-    this.data.openaiApiKey = key;
-    this.save();
   }
 }

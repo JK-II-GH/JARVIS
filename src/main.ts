@@ -64,14 +64,16 @@ async function initialize(): Promise<void> {
   }
 
   // API-Schlüssel prüfen
-  if (!settings.openaiApiKey) {
+  if (!settings.getSttConfig()) {
     dialog.showMessageBox({
       type: "info",
       title: "JARVIS — Einrichtung",
-      message: "OpenAI-API-Schlüssel fehlt",
+      message: "Spracherkennungs-API-Schlüssel fehlt",
       detail:
-        `Bitte trage deinen Schlüssel in diese Datei ein:\n${settings.settingsFilePath}\n\n` +
-        `Beispiel:\n{\n  "openaiApiKey": "sk-..."\n}`,
+        `Bitte trage einen Schlüssel in diese Datei ein:\n${settings.settingsFilePath}\n\n` +
+        `Groq (kostenlos, empfohlen):\n{\n  "groqApiKey": "gsk_..."\n}\n\n` +
+        `OpenAI (alternativ):\n{\n  "openaiApiKey": "sk-..."\n}\n\n` +
+        `Groq-Schlüssel: https://console.groq.com/keys`,
       buttons: ["OK"],
     });
   }
@@ -94,14 +96,14 @@ async function initialize(): Promise<void> {
   // Audio-Daten vom Renderer empfangen und transkribieren
   ipcMain.on("jarvis:audio-data", async (_, data: ArrayBuffer, mimeType: string) => {
     try {
-      const apiKey = settings.openaiApiKey;
-      if (!apiKey) {
-        console.error("JARVIS: Kein API-Schlüssel konfiguriert.");
+      const sttConfig = settings.getSttConfig();
+      if (!sttConfig) {
+        console.error("JARVIS: Kein STT-API-Schlüssel konfiguriert.");
         sendStatus("bereit");
         return;
       }
 
-      const whisper = new WhisperProvider(apiKey);
+      const whisper = new WhisperProvider(sttConfig);
       const transcript = await whisper.transcribe(Buffer.from(data), mimeType);
 
       if (transcript) {
