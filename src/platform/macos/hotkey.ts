@@ -7,12 +7,19 @@ const isCmd = (code: number) =>
 const isAlt = (code: number) =>
   code === UiohookKey.Alt || code === UiohookKey.AltRight;
 
+// Taps kürzer als dieser Schwellwert starten keine Aufnahme — nur Doppeltipp
+const TAP_THRESHOLD_MS = 250;
+// Maximale Pause zwischen zwei Taps für Doppeltipp-Erkennung
+const DOUBLE_TAP_WINDOW_MS = 500;
+
 export class MacHotkey {
   private cmdDown = false;
   private altDown = false;
   private holdActive = false;
+  private pressTime = 0;
+  private isHolding = false; // true sobald Schwellwert überschritten
+  private holdTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Doppeltipp-Erkennung: zwei schnelle Tap-Zyklen ohne Halten
   private lastReleaseTime = 0;
   private tapCount = 0;
 
@@ -23,7 +30,14 @@ export class MacHotkey {
 
       if (this.cmdDown && this.altDown && !this.holdActive) {
         this.holdActive = true;
-        handlers.onHoldStart();
+        this.pressTime = Date.now();
+        // Aufnahme erst starten wenn Tasten länger als TAP_THRESHOLD_MS gehalten
+        this.holdTimer = setTimeout(() => {
+          if (this.holdActive) {
+            this.isHolding = true;
+            handlers.onHoldStart();
+          }
+        }, TAP_THRESHOLD_MS);
       }
     });
 
@@ -36,19 +50,30 @@ export class MacHotkey {
       if (this.holdActive && wasBoth && (!this.cmdDown || !this.altDown)) {
         this.holdActive = false;
 
-        const now = Date.now();
-        if (now - this.lastReleaseTime < 400) {
-          this.tapCount++;
-          if (this.tapCount >= 2) {
-            this.tapCount = 0;
-            handlers.onDoubleTap();
-          }
-        } else {
-          this.tapCount = 1;
+        if (this.holdTimer) {
+          clearTimeout(this.holdTimer);
+          this.holdTimer = null;
         }
-        this.lastReleaseTime = now;
 
-        handlers.onHoldEnd();
+        if (this.isHolding) {
+          // Echter Hold: Aufnahme beenden
+          this.isHolding = false;
+          this.tapCount = 0;
+          handlers.onHoldEnd();
+        } else {
+          // Kurzer Tap: Doppeltipp-Erkennung, keine Aufnahme
+          const now = Date.now();
+          if (now - this.lastReleaseTime < DOUBLE_TAP_WINDOW_MS) {
+            this.tapCount++;
+            if (this.tapCount >= 2) {
+              this.tapCount = 0;
+              handlers.onDoubleTap();
+            }
+          } else {
+            this.tapCount = 1;
+          }
+          this.lastReleaseTime = now;
+        }
       }
     });
 
