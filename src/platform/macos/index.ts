@@ -26,17 +26,26 @@ export class MacOSAdapter implements PlatformAdapter {
     const previous = clipboard.readText();
     clipboard.writeText(sentinel);
 
-    // Aktuelle Markierung in die Zwischenablage kopieren
-    await execAsync(
-      `osascript -e 'tell application "System Events" to keystroke "c" using {command down}'`,
-    );
-    await new Promise<void>((r) => setTimeout(r, 150));
-
-    const selected = clipboard.readText();
-    clipboard.writeText(previous); // Zwischenablage sofort wiederherstellen
-
-    // Wenn sich nichts geändert hat, war nichts markiert
-    return selected === sentinel ? "" : selected;
+    // Markierten Text über Accessibility-API lesen — keine Tastensimulation,
+    // damit der gehaltene Hotkey nicht vorzeitig ausgelöst wird
+    const lines = [
+      `tell application "System Events"`,
+      `  set frontApp to first application process whose frontmost is true`,
+      `  tell frontApp`,
+      `    try`,
+      `      set sel to value of attribute "AXSelectedText" of (focused UI element)`,
+      `      if sel is missing value then return ""`,
+      `      return sel`,
+      `    on error`,
+      `      return ""`,
+      `    end try`,
+      `  end tell`,
+      `end tell`,
+    ];
+    const args = lines.map((l) => `-e ${JSON.stringify(l)}`).join(" ");
+    const { stdout } = await execAsync(`osascript ${args}`).catch(() => ({ stdout: "" }));
+    clipboard.writeText(previous); // Zwischenablage wiederherstellen
+    return stdout.trim();
   }
 
   async insertText(text: string): Promise<void> {
