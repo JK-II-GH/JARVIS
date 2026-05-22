@@ -89,9 +89,11 @@
     const statusText  = document.getElementById('statusText');
     const modusBadge  = document.getElementById('modusBadge');
 
-    let mediaRecorder = null;
-    let audioChunks   = [];
-    let mimeType      = 'audio/webm';
+    // Aufnahme-Zustand (Web Audio API → WAV, kein MediaRecorder-Codec nötig)
+    let audioCtx   = null;
+    let micStream  = null;
+    let processor  = null;
+    let pcmChunks  = [];
 
     const statusConfig = {
       bereit:       { text: 'Bereit',          klass: '' },
@@ -106,55 +108,74 @@
       if (modus) modusBadge.textContent = modus;
     }
 
-    function bestAudioFormat() {
-      const candidates = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/ogg;codecs=opus',
-        'audio/mp4',
-      ];
-      return candidates.find(f => MediaRecorder.isTypeSupported(f)) || '';
+    // WAV-Encoder: Float32 PCM → WAV ArrayBuffer (16-bit Mono)
+    function encodeWav(samples, sampleRate) {
+      const buf  = new ArrayBuffer(44 + samples.length * 2);
+      const view = new DataView(buf);
+      const str  = (off, s) => [...s].forEach((c, i) => view.setUint8(off + i, c.charCodeAt(0)));
+
+      str(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true);
+      str(8, 'WAVE'); str(12, 'fmt ');
+      view.setUint32(16, 16, true);           // fmt-Chunk-Größe
+      view.setUint16(20, 1, true);            // PCM
+      view.setUint16(22, 1, true);            // Mono
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);           // 16 Bit
+      str(36, 'data'); view.setUint32(40, samples.length * 2, true);
+
+      let off = 44;
+      for (const s of samples) {
+        const v = Math.max(-1, Math.min(1, s));
+        view.setInt16(off, v < 0 ? v * 32768 : v * 32767, true);
+        off += 2;
+      }
+      return buf;
     }
 
     // ── Aufnahme starten ────────────────────────────────────────────────────
 
     window.jarvis.onStartRecording(async () => {
-      audioChunks = [];
-      mimeType    = bestAudioFormat() || 'audio/webm';
-
+      pcmChunks = [];
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const opts   = mimeType ? { mimeType } : {};
-        mediaRecorder = new MediaRecorder(stream, opts);
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+        });
+        audioCtx  = new AudioContext({ sampleRate: 16000 });
+        const src = audioCtx.createMediaStreamSource(micStream);
+        processor = audioCtx.createScriptProcessor(4096, 1, 1);
 
-        mediaRecorder.ondataavailable = (e) => {
-          if (e.data.size > 0) audioChunks.push(e.data);
-        };
+        processor.onaudioprocess = (e) =>
+          pcmChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
 
-        mediaRecorder.start(100);
+        src.connect(processor);
+        processor.connect(audioCtx.destination);
       } catch (err) {
         console.error('JARVIS Renderer: Mikrofon-Fehler:', err);
         setStatus('bereit');
       }
     });
 
-    // ── Aufnahme stoppen + Daten senden ────────────────────────────────────
+    // ── Aufnahme stoppen + WAV senden ──────────────────────────────────────
 
     window.jarvis.onStopRecording(() => {
-      if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+      if (!processor) return;
 
-      mediaRecorder.onstop = async () => {
-        const blob  = new Blob(audioChunks, { type: mimeType });
-        const ab    = await blob.arrayBuffer();
-        window.jarvis.sendAudioData(ab, mimeType.split(';')[0]);
+      processor.disconnect();
+      micStream.getTracks().forEach(t => t.stop());
+      audioCtx.close();
+      processor = null;
 
-        // Mikrofon-Stream freigeben
-        mediaRecorder.stream.getTracks().forEach(t => t.stop());
-        mediaRecorder = null;
-        audioChunks   = [];
-      };
+      const totalLen = pcmChunks.reduce((n, c) => n + c.length, 0);
+      if (totalLen < 4800) return; // weniger als 0,3 s → überspringen
 
-      mediaRecorder.stop();
+      const pcm = new Float32Array(totalLen);
+      let off = 0;
+      for (const c of pcmChunks) { pcm.set(c, off); off += c.length; }
+      pcmChunks = [];
+
+      window.jarvis.sendAudioData(encodeWav(pcm, 16000), 'audio/wav');
     });
 
     // ── Status-Updates vom Main-Prozess ────────────────────────────────────

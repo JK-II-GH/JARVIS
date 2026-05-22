@@ -15,7 +15,7 @@ export class WhisperProvider implements STTProvider {
   }
 
   async transcribe(audio: Buffer, mimeType: string): Promise<string> {
-    const ext = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "mp4" : "webm";
+    const ext = mimeType.includes("wav") ? "wav" : mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "mp4" : "webm";
     const tmpFile = path.join(os.tmpdir(), `jarvis_${Date.now()}.${ext}`);
 
     fs.writeFileSync(tmpFile, audio);
