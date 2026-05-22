@@ -100,6 +100,7 @@ async function initialize(): Promise<void> {
   // Modus-Wechsel vom Renderer (Klick auf Modus-Badge)
   ipcMain.on("jarvis:set-mode", (_, mode: string) => {
     currentMode = mode as "dictation" | "edit";
+    console.log(`JARVIS: Modus gesetzt auf "${currentMode}"`);
   });
 
   // Hotkey: Cmd+Alt halten
@@ -111,6 +112,7 @@ async function initialize(): Promise<void> {
         platform.readSelectedText()
           .then((text) => {
             currentSelectedText = text;
+            console.log(`JARVIS: markierter Text = "${text.slice(0, 60)}..." (${text.length} Zeichen)`);
             sendStatus("aufnahme", label);
             pillWindow?.webContents.send("jarvis:start-recording");
           })
@@ -153,6 +155,7 @@ async function initialize(): Promise<void> {
         return;
       }
 
+      console.log(`JARVIS: Modus="${currentMode}", selectedText.length=${currentSelectedText.length}, transcript="${transcript}"`);
       if (currentMode === "edit" && currentSelectedText) {
         // Text-bearbeiten-Modus: Sprachbefehl per KI auf markierten Text anwenden
         const aiConfig = settings.getAiConfig();
