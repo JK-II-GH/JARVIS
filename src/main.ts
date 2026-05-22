@@ -184,10 +184,10 @@ async function initialize(): Promise<void> {
       console.log(`JARVIS: Modus="${currentMode}", selectedText.length=${selectedText.length}, transcript="${transcript}"`);
 
       if (currentMode === "conversation") {
-        // Gesprächsmodus: KI antworten lassen und vorlesen
+        // Gesprächsmodus: Claude mit eingebauter Websuche
         const aiConfig = settings.getAiConfig();
         if (!aiConfig) {
-          console.error("JARVIS: Kein KI-Schlüssel für Gesprächsmodus.");
+          console.error("JARVIS: Kein anthropicApiKey für Gesprächsmodus.");
           sendStatus("bereit", "Gespräch");
           return;
         }

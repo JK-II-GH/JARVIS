@@ -6,6 +6,7 @@ interface SettingsData {
   openaiApiKey?: string;
   groqApiKey?: string;
   anthropicApiKey?: string;
+  perplexityApiKey?: string;
 }
 
 export interface SttConfig {
@@ -52,6 +53,10 @@ export class SettingsManager {
       return { provider: "anthropic", apiKey: this.data.anthropicApiKey };
     }
     return null;
+  }
+
+  getPerplexityApiKey(): string | null {
+    return this.data.perplexityApiKey ?? null;
   }
 
   private load(): SettingsData {
