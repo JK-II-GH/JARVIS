@@ -156,7 +156,16 @@ async function initialize(): Promise<void> {
       }
 
       console.log(`JARVIS: Modus="${currentMode}", selectedText.length=${currentSelectedText.length}, transcript="${transcript}"`);
-      if (currentMode === "edit" && currentSelectedText) {
+      if (currentMode === "edit") {
+        if (!currentSelectedText) {
+          // Kein Text markiert — Bedienungshilfen-Berechtigung fehlt wahrscheinlich
+          console.error(
+            "JARVIS: Bearbeiten-Modus aktiv, aber kein markierter Text gelesen.\n" +
+            "Prüfe: Systemeinstellungen → Datenschutz & Sicherheit → Bedienungshilfen → Electron.app aktiviert?",
+          );
+          sendStatus("bereit", "Bearbeiten");
+          return;
+        }
         // Text-bearbeiten-Modus: Sprachbefehl per KI auf markierten Text anwenden
         const aiConfig = settings.getAiConfig();
         if (!aiConfig) {
