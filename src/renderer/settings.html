@@ -156,22 +156,22 @@
   </div>
 
   <script>
-    const { jarvisSettings } = window;
+    const api = window.jarvisSettings;
 
     // Felder laden
-    jarvisSettings.load().then((s) => {
-      document.getElementById('aiProvider').value  = s.aiProvider    || 'anthropic';
-      document.getElementById('anthropicKey').value = s.anthropicKey || '';
-      document.getElementById('openaiKey').value    = s.openaiKey    || '';
-      document.getElementById('groqKey').value      = s.groqKey      || '';
+    api.load().then((s) => {
+      document.getElementById('aiProvider').value   = s.aiProvider    || 'anthropic';
+      document.getElementById('anthropicKey').value = s.anthropicKey  || '';
+      document.getElementById('openaiKey').value    = s.openaiKey     || '';
+      document.getElementById('groqKey').value      = s.groqKey       || '';
     });
 
     document.getElementById('btnSave').addEventListener('click', async () => {
-      await jarvisSettings.save({
-        aiProvider:    document.getElementById('aiProvider').value,
-        anthropicKey:  document.getElementById('anthropicKey').value.trim(),
-        openaiKey:     document.getElementById('openaiKey').value.trim(),
-        groqKey:       document.getElementById('groqKey').value.trim(),
+      await api.save({
+        aiProvider:   document.getElementById('aiProvider').value,
+        anthropicKey: document.getElementById('anthropicKey').value.trim(),
+        openaiKey:    document.getElementById('openaiKey').value.trim(),
+        groqKey:      document.getElementById('groqKey').value.trim(),
       });
       const hint = document.getElementById('savedHint');
       hint.classList.add('visible');
@@ -179,7 +179,7 @@
     });
 
     document.getElementById('btnCancel').addEventListener('click', () => {
-      jarvisSettings.close();
+      api.close();
     });
   </script>
 </body>
