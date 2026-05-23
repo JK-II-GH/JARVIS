@@ -88,11 +88,13 @@ export interface PlatformAdapter {
 }
 
 /** Liefert die Implementierung fuer das aktuelle Betriebssystem. */
-export function createPlatformAdapter(): PlatformAdapter {
+export function createPlatformAdapter(
+  getWindowSources: () => Promise<{ id: string; name: string }[]>,
+): PlatformAdapter {
   if (process.platform === "darwin") {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { MacOSAdapter } = require("./macos/index") as typeof import("./macos/index");
-    return new MacOSAdapter();
+    return new MacOSAdapter(getWindowSources);
   }
   throw new Error(`Plattform nicht unterstuetzt: ${process.platform}`);
 }

@@ -221,6 +221,18 @@
     let pcmChunks = [];
 
     window.jarvis.onStartRecording(async () => {
+      // Im Datei-Modus Fensterquellen aus dem Renderer-Kontext holen
+      // (ScreenCaptureKit-Berechtigung wird hier korrekt ausgelöst)
+      if (MODI_VALUES[modusIndex] === 'file') {
+        try {
+          const sources = await window.jarvis.getWindowSources();
+          window.jarvis.sendWindowSources(sources);
+          console.log('JARVIS Renderer: Fensterquellen:', sources.map(s => s.name).join(', '));
+        } catch (e) {
+          window.jarvis.sendWindowSources([]);
+        }
+      }
+
       pcmChunks = [];
       try {
         // Nativen Sample-Rate verwenden — erzwungene 16 kHz werden von macOS

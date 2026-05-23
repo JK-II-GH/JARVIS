@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen, ipcMain, dialog, globalShortcut } from "electron";
+import { app, BrowserWindow, screen, ipcMain, dialog, globalShortcut, systemPreferences, shell } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { createPlatformAdapter } from "./platform/index";
@@ -109,11 +109,44 @@ function stopSpeaking(): void {
   sendStatus("bereit", MODE_LABELS[currentMode]);
 }
 
+// ── Fensterquellen aus Renderer-Prozess holen (ScreenCaptureKit) ───────────
+
+function getWindowSources(): Promise<{ id: string; name: string }[]> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve([]), 3000);
+    ipcMain.once("jarvis:window-sources-result", (_, sources) => {
+      clearTimeout(timer);
+      resolve(sources);
+    });
+    pillWindow?.webContents.send("jarvis:get-window-sources");
+  });
+}
+
 // ── Start ──────────────────────────────────────────────────────────────────
 
 async function initialize(): Promise<void> {
   settings = new SettingsManager();
-  platform = createPlatformAdapter();
+  platform = createPlatformAdapter(getWindowSources);
+
+  // Screen-Recording-Status prüfen — nötig für Quick Look-Fenstererkennung
+  const screenStatus = systemPreferences.getMediaAccessStatus("screen");
+  console.log(`JARVIS: Screen Recording Status = "${screenStatus}"`);
+  if (screenStatus !== "granted") {
+    dialog.showMessageBox({
+      type: "info",
+      title: "JARVIS — Bildschirmaufnahme",
+      message: "Bildschirmaufnahme-Berechtigung fehlt",
+      detail:
+        "Damit JARVIS Quick Look-Fenster präzise erfassen kann, bitte Electron.app in " +
+        "Systemeinstellungen → Datenschutz & Sicherheit → Bildschirmaufnahme aktivieren.",
+      buttons: ["Einstellungen öffnen", "Später"],
+    }).then(({ response }) => {
+      if (response === 0)
+        shell.openExternal(
+          "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+        );
+    });
+  }
 
   const perms = await platform.checkPermissions();
 

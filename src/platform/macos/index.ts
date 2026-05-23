@@ -1,11 +1,12 @@
 import { shell, clipboard } from "electron";
 import { exec, type ChildProcess } from "child_process";
 import { promisify } from "util";
+import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { PlatformAdapter, HotkeyHandlers, PermissionStatus } from "../index";
 
-const SCREENSHOT_PATH = path.join(os.tmpdir(), "jarvis_screenshot.png");
+const SCREENSHOT_PATH = path.join(os.tmpdir(), "jarvis_screenshot.jpg");
 import { MacHotkey } from "./hotkey";
 import { checkPermissions, requestMicrophonePermission } from "./permissions";
 import { insertText } from "./textInsert";
@@ -16,6 +17,10 @@ export class MacOSAdapter implements PlatformAdapter {
   readonly name = "macos";
   private hotkey = new MacHotkey();
   private sayProcess: ChildProcess | null = null;
+
+  constructor(
+    private readonly getWindowSources: () => Promise<{ id: string; name: string }[]>,
+  ) {}
 
   async registerHotkey(handlers: HotkeyHandlers): Promise<void> {
     await this.hotkey.register(handlers);
@@ -100,6 +105,10 @@ export class MacOSAdapter implements PlatformAdapter {
 
   async resolveFileContext(): Promise<string | null> {
     try {
+      // Quick Look zuerst: Finder-Auswahl + desktopCapturer-Fensterabgleich
+      const qlPath = await this.captureQuickLookIfOpen();
+      if (qlPath) return qlPath;
+
       const { stdout } = await execAsync(
         `osascript -e 'tell application "System Events" to get name of first process whose frontmost is true'`,
       );
@@ -107,11 +116,22 @@ export class MacOSAdapter implements PlatformAdapter {
       console.log(`JARVIS: Vorderste App = "${frontApp}"`);
 
       if (frontApp === "Finder") {
-        // Quick Look offen? → Screenshot des QL-Fensters
-        const qlPath = await this.captureQuickLookIfOpen();
-        if (qlPath) return qlPath;
-        // Normaler Finder/Desktop → markierte Datei lesen
-        return await this.readSelectedFile();
+        const selectedFile = await this.readSelectedFile();
+        if (selectedFile) {
+          try {
+            const { size } = fs.statSync(selectedFile);
+            if (size > 20 * 1024 * 1024) {
+              // Zu groß für Upload → Screenshot (Quick Look zeigt vermutlich die Datei)
+              console.log(`JARVIS: ${(size / 1024 / 1024).toFixed(0)} MB Datei → Vollbild-Screenshot`);
+              await this.captureAndCompress();
+              return SCREENSHOT_PATH;
+            }
+          } catch { /* ignorieren */ }
+        }
+        return selectedFile;
+      } else if (frontApp === "Electron") {
+        await this.captureAndCompress();
+        return SCREENSHOT_PATH;
       } else {
         // Andere App → Screenshot des aktiven Fensters
         return await this.captureActiveWindow();
@@ -123,32 +143,42 @@ export class MacOSAdapter implements PlatformAdapter {
 
   private async captureQuickLookIfOpen(): Promise<string | null> {
     try {
+      // Markierte Datei im Finder → Dateiname = Fenstertitel in Quick Look
+      const selectedFile = await this.readSelectedFile();
+      if (!selectedFile) return null;
+      const filename = path.basename(selectedFile).replace(/"/g, '\\"');
+
+      // Quick Look-Fenster erscheinen als Finder-Fenster mit dem Dateinamen als Titel.
+      // Bounds liefern {left, top, right, bottom} → umrechnen in x,y,w,h für screencapture -R
       const { stdout } = await execAsync(
-        `osascript -e 'tell application "System Events"
-          set qlProcs to (every process whose name contains "QuickLook")
-          if (count of qlProcs) = 0 then return ""
-          set qlProc to item 1 of qlProcs
-          if (count of windows of qlProc) = 0 then return ""
+        `osascript -e 'tell application "Finder"
           try
-            set w to first window of qlProc
-            set {x, y} to position of w
-            set {ww, wh} to size of w
-            return (x as string) & "," & (y as string) & "," & (ww as string) & "," & (wh as string)
-          on error
-            return "fullscreen"
+            repeat with w in windows
+              if name of w is "${filename}" then
+                set b to bounds of w
+                set x to item 1 of b
+                set y to item 2 of b
+                set bw to (item 3 of b) - x
+                set bh to (item 4 of b) - y
+                return (x as string) & "," & (y as string) & "," & (bw as string) & "," & (bh as string)
+              end if
+            end repeat
           end try
+          return ""
         end tell'`,
       );
-      const result = stdout.trim();
-      if (!result) return null;
-      if (result === "fullscreen") {
-        await execAsync(`screencapture -x "${SCREENSHOT_PATH}"`);
-      } else {
-        await execAsync(`screencapture -x -R "${result}" "${SCREENSHOT_PATH}"`);
-      }
-      console.log(`JARVIS: Quick Look erkannt → Screenshot (${result})`);
+
+      const bounds = stdout.trim();
+      console.log(`JARVIS: Quick Look Finder-Fenster-Bounds = "${bounds}"`);
+      if (!bounds) return null;
+
+      // Region-Screenshot statt Vollbild
+      await execAsync(`screencapture -x -t jpg -R "${bounds}" "${SCREENSHOT_PATH}"`);
+      await execAsync(`sips -Z 1920 "${SCREENSHOT_PATH}" > /dev/null 2>&1`);
+      console.log(`JARVIS: Quick Look Screenshot (Region ${bounds})`);
       return SCREENSHOT_PATH;
-    } catch {
+    } catch (err) {
+      console.log(`JARVIS: Quick Look Finder-AppleScript fehlgeschlagen: ${err}`);
       return null;
     }
   }
@@ -169,15 +199,21 @@ export class MacOSAdapter implements PlatformAdapter {
       );
       const bounds = stdout.trim();
       if (bounds) {
-        await execAsync(`screencapture -x -R "${bounds}" "${SCREENSHOT_PATH}"`);
+        await execAsync(`screencapture -x -t jpg -R "${bounds}" "${SCREENSHOT_PATH}"`);
       } else {
-        await execAsync(`screencapture -x "${SCREENSHOT_PATH}"`);
+        await this.captureAndCompress();
       }
     } catch {
-      // Fallback: ganzer Bildschirm
-      await execAsync(`screencapture -x "${SCREENSHOT_PATH}"`);
+      await this.captureAndCompress();
     }
+    await execAsync(`sips -Z 1920 "${SCREENSHOT_PATH}" > /dev/null 2>&1`);
     return SCREENSHOT_PATH;
+  }
+
+  private async captureAndCompress(): Promise<void> {
+    // JPEG + max. 1920px → bleibt sicher unter 5 MB (Anthropic-Limit)
+    await execAsync(`screencapture -x -t jpg "${SCREENSHOT_PATH}"`);
+    await execAsync(`sips -Z 1920 "${SCREENSHOT_PATH}" > /dev/null 2>&1`);
   }
 }
 

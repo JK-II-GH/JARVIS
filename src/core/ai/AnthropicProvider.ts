@@ -77,33 +77,30 @@ export class AnthropicProvider implements AIProvider {
   }
 
   async chatWithFile(filePath: string, question: string): Promise<string> {
-    const ext   = path.extname(filePath).toLowerCase();
+    const ext    = path.extname(filePath).toLowerCase();
     const base64 = fs.readFileSync(filePath).toString("base64");
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let fileBlock: any;
-    const extraHeaders: Record<string, string> = {};
-
     const imageMime = IMAGE_MIMES[ext];
     if (imageMime) {
       fileBlock = { type: "image", source: { type: "base64", media_type: imageMime, data: base64 } };
     } else if (ext === ".pdf") {
+      // PDF ist ab claude-3-5-sonnet-20241022 Standard — kein Beta-Header nötig
       fileBlock = { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } };
-      extraHeaders["anthropic-beta"] = "pdfs-2024-09-25";
     } else {
       throw new Error(`Nicht unterstütztes Dateiformat: ${ext}`);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const response = await (this.client.messages.create as any)(
-      {
-        model: "claude-sonnet-4-6",
-        max_tokens: 1024,
-        system: CHAT_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: [fileBlock, { type: "text", text: question }] }],
-      },
-      Object.keys(extraHeaders).length ? { headers: extraHeaders } : {},
-    );
+    console.log(`JARVIS: Anthropic chatWithFile → ${ext}, ${(base64.length * 0.75 / 1024).toFixed(0)} KB`);
+    const response = await this.client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1024,
+      system: CHAT_SYSTEM_PROMPT,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      messages: [{ role: "user", content: [fileBlock, { type: "text", text: question }] }] as any,
+    });
+    console.log(`JARVIS: Anthropic chatWithFile → Antwort erhalten (${response.content.length} Blöcke)`);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = response.content

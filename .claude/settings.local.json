@@ -14,7 +14,15 @@
       "Bash(pkill -f \"node_modules/electron/dist/Electron.app\")",
       "Bash(sleep 4 && cat /tmp/jarvis.log)",
       "Bash(open \"x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent\")",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(osascript -e 'tell application \"System Events\" to get name of every process')",
+      "Bash(python3 -c ' *)",
+      "Bash(swift -e ' *)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(screencapture -x -t jpg /tmp/test_screenshot.jpg)",
+      "Bash(sips -Z 1920 /tmp/test_screenshot.jpg)",
+      "Read(//tmp/**)",
+      "Bash(osascript)"
     ]
   }
 }
