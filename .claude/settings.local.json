@@ -25,7 +25,12 @@
       "Bash(osascript)",
       "Bash(codesign -dv release/mac-arm64/JARVIS.app)",
       "Bash(gh auth *)",
-      "Bash(gh --version)"
+      "Bash(gh --version)",
+      "Bash(gh repo *)",
+      "Bash(git remote *)",
+      "Bash(git branch *)",
+      "Bash(git push *)",
+      "Bash(chmod +x scripts/release.sh)"
     ]
   }
 }

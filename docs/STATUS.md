@@ -48,8 +48,8 @@
 
 - [x] Build-Konfiguration für macOS (.app / .dmg) — electron-builder + Ad-hoc-Signatur in `build/afterPack.js`
 - [x] Update-Check beim Start (GitHub-Releases-API, manueller Download-Link)
-- [ ] GitHub-Repo anlegen, Code pushen, erstes Release hochladen
-- [ ] Release-Skript (Version wählen, bauen, hochladen)
+- [x] GitHub-Repo angelegt + Code gepusht — https://github.com/JK-II-GH/JARVIS
+- [x] Release-Skript (`scripts/release.sh`) — bumpt Version, baut DMGs, erstellt GitHub-Release via gh
 - [ ] Windows-Adapter beginnen (`src/platform/windows`)
 
 ## Notizen / Erkenntnisse

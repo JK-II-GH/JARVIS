@@ -10,7 +10,8 @@
     "dev": "tsc && electron .",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac"
+    "dist:mac": "npm run build && electron-builder --mac",
+    "release": "bash scripts/release.sh"
   },
   "keywords": [],
   "author": "Jürgen Kutschenreuter",
