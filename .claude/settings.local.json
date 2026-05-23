@@ -30,7 +30,17 @@
       "Bash(git remote *)",
       "Bash(git branch *)",
       "Bash(git push *)",
-      "Bash(chmod +x scripts/release.sh)"
+      "Bash(chmod +x scripts/release.sh)",
+      "Bash(git tag *)",
+      "Bash(gh release create v0.1.0 release/JARVIS-0.1.0-arm64.dmg release/JARVIS-0.1.0.dmg --title 'JARVIS 0.1.0' --notes 'Erstes Release. macOS-only \\(Apple Silicon und Intel\\). *)",
+      "Bash(gh release *)",
+      "Bash(git commit *)",
+      "Bash(python3 -c \"from PIL import Image; print\\('PIL ok'\\)\")",
+      "Bash(python3 scripts/gen-tray-icon.py src/renderer/trayIconTemplate.png 22)",
+      "Bash(python3 scripts/gen-tray-icon.py 'src/renderer/trayIconTemplate@2x.png' 44)",
+      "Bash(pkill -f \"JARVIS.app/Contents/MacOS/JARVIS\")",
+      "Bash(file node_modules/uiohook-napi/prebuilds/*/node.napi.node)",
+      "Bash(file node_modules/uiohook-napi/prebuilds/darwin-arm64/*.node)"
     ]
   }
 }

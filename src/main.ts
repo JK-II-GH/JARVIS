@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen, ipcMain, dialog, globalShortcut, systemPreferences, shell } from "electron";
+import { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, globalShortcut, systemPreferences, shell } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { createPlatformAdapter } from "./platform/index";
@@ -16,6 +16,7 @@ const UPDATE_REPO  = "JARVIS";
 
 let pillWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
 let platform: PlatformAdapter;
 let settings: SettingsManager;
 
@@ -84,6 +85,43 @@ function openSettingsWindow(): void {
   settingsWindow.on("closed", () => { settingsWindow = null; });
 }
 
+// ── Tray-Icon (Menüleiste) ────────────────────────────────────────────────
+
+function createTray(): void {
+  const iconPath = path.join(__dirname, "../src/renderer/trayIconTemplate.png");
+  const icon = nativeImage.createFromPath(iconPath);
+  // Template-Image: macOS färbt automatisch passend zum Menüleisten-Theme
+  icon.setTemplateImage(true);
+
+  tray = new Tray(icon);
+  tray.setToolTip("JARVIS");
+  rebuildTrayMenu();
+}
+
+function rebuildTrayMenu(): void {
+  if (!tray) return;
+  const modeLabel = MODE_LABELS[currentMode] ?? currentMode;
+
+  const menu = Menu.buildFromTemplate([
+    { label: `Modus: ${modeLabel}`, enabled: false },
+    { type: "separator" },
+    ...MODES.map((m) => ({
+      label: MODE_LABELS[m],
+      type: "radio" as const,
+      checked: m === currentMode,
+      click: () => {
+        currentMode = m;
+        pillWindow?.webContents.send("jarvis:mode-update", m);
+        rebuildTrayMenu();
+      },
+    })),
+    { type: "separator" },
+    { label: "Einstellungen …", click: () => openSettingsWindow() },
+    { type: "separator" },
+    { label: "JARVIS beenden", accelerator: "CommandOrControl+Q", click: () => app.quit() },
+  ]);
+  tray.setContextMenu(menu);
+}
 
 function getAiProvider(): AIProvider | null {
   const cfg = settings.getAiConfig();
@@ -224,6 +262,7 @@ async function initialize(): Promise<void> {
   // Modus-Wechsel vom Renderer (Klick auf Modus-Badge)
   ipcMain.on("jarvis:set-mode", (_, mode: string) => {
     currentMode = mode as typeof currentMode;
+    rebuildTrayMenu();
     console.log(`JARVIS: Modus gesetzt auf "${currentMode}"`);
   });
 
@@ -286,6 +325,7 @@ async function initialize(): Promise<void> {
       const idx = MODES.indexOf(currentMode);
       currentMode = MODES[(idx + 1) % MODES.length];
       pillWindow?.webContents.send("jarvis:mode-update", currentMode);
+      rebuildTrayMenu();
       console.log(`JARVIS: Modus (Doppeltipp) → "${currentMode}"`);
     },
   });
@@ -385,6 +425,7 @@ async function initialize(): Promise<void> {
 
 app.whenReady().then(() => {
   createPillWindow();
+  createTray();
   initialize().catch((err) => console.error("JARVIS: Initialisierungsfehler:", err));
   app.on("activate", () => { if (!pillWindow) createPillWindow(); });
 
