@@ -104,6 +104,11 @@
       color: rgba(253, 186, 116, 0.95);
     }
 
+    .modus-badge.datei {
+      background: rgba(52, 211, 153, 0.2);
+      color: rgba(110, 231, 183, 0.9);
+    }
+
     .settings-btn {
       font-size: 13px;
       color: rgba(255, 255, 255, 0.25);
@@ -133,8 +138,8 @@
     const statusText  = document.getElementById('statusText');
     const modusBadge  = document.getElementById('modusBadge');
 
-    const MODI = ['Diktat', 'Bearbeiten', 'Gespräch'];
-    const MODI_VALUES = ['dictation', 'edit', 'conversation'];
+    const MODI = ['Diktat', 'Bearbeiten', 'Gespräch', 'Datei'];
+    const MODI_VALUES = ['dictation', 'edit', 'conversation', 'file'];
     let modusIndex = 0;
     let aufnahmeAktiv = false;
 
@@ -143,8 +148,9 @@
     function applyModus(index) {
       modusIndex = index;
       modusBadge.textContent = MODI[modusIndex];
-      modusBadge.classList.toggle('aktiv',      modusIndex === 1);
-      modusBadge.classList.toggle('gespraech',  modusIndex === 2);
+      modusBadge.classList.toggle('aktiv',     modusIndex === 1);
+      modusBadge.classList.toggle('gespraech', modusIndex === 2);
+      modusBadge.classList.toggle('datei',     modusIndex === 3);
       window.jarvis.setMode(MODI_VALUES[modusIndex]);
     }
 

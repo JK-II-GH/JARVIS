@@ -14,15 +14,17 @@ let platform: PlatformAdapter;
 let settings: SettingsManager;
 
 // Zustand des aktuellen Vorgangs
-let currentMode: "dictation" | "edit" | "conversation" = "dictation";
+let currentMode: "dictation" | "edit" | "conversation" | "file" = "dictation";
 // Im Bearbeiten-Modus: Promise das beim Loslassen des Hotkeys gestartet wird
 let pendingSelectedText: Promise<string> | null = null;
 // TTS läuft gerade
 let speaking = false;
+// Datei-Kontext-Modus: aktuell geladene Datei
+let currentFile: string | null = null;
 
-const MODES: Array<"dictation" | "edit" | "conversation"> = ["dictation", "edit", "conversation"];
+const MODES: Array<"dictation" | "edit" | "conversation" | "file"> = ["dictation", "edit", "conversation", "file"];
 const MODE_LABELS: Record<string, string> = {
-  dictation: "Diktat", edit: "Bearbeiten", conversation: "Gespräch",
+  dictation: "Diktat", edit: "Bearbeiten", conversation: "Gespräch", file: "Datei",
 };
 
 // ── Pille ──────────────────────────────────────────────────────────────────
@@ -72,6 +74,43 @@ function openSettingsWindow(): void {
 
   settingsWindow.loadFile(path.join(__dirname, "../src/renderer/settings.html"));
   settingsWindow.on("closed", () => { settingsWindow = null; });
+}
+
+async function openFilePicker(prevMode: typeof currentMode): Promise<void> {
+  const result = await dialog.showOpenDialog({
+    title: "Datei für KI-Kontext auswählen",
+    properties: ["openFile"],
+    filters: [
+      { name: "Bilder & PDFs", extensions: ["jpg", "jpeg", "png", "gif", "webp", "pdf"] },
+    ],
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    // Modus zurücksetzen wenn Auswahl abgebrochen
+    currentMode = prevMode;
+    pillWindow?.webContents.send("jarvis:mode-update", currentMode);
+    sendStatus("bereit", MODE_LABELS[currentMode]);
+    return;
+  }
+  const filePath = result.filePaths[0];
+  const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fileSize = (require("fs") as typeof import("fs")).statSync(filePath).size;
+  if (fileSize > MAX_BYTES) {
+    const mb = (fileSize / 1024 / 1024).toFixed(1);
+    dialog.showMessageBox({
+      type: "warning",
+      title: "JARVIS — Datei zu groß",
+      message: `Datei ist ${mb} MB groß`,
+      detail: "JARVIS unterstützt Dateien bis 20 MB. Bitte eine kleinere Datei wählen.",
+      buttons: ["OK"],
+    });
+    currentMode = prevMode;
+    pillWindow?.webContents.send("jarvis:mode-update", currentMode);
+    sendStatus("bereit", MODE_LABELS[currentMode]);
+    return;
+  }
+  currentFile = filePath;
+  sendStatus("bereit", "Datei");
 }
 
 function getAiProvider(): AIProvider | null {
@@ -156,7 +195,10 @@ async function initialize(): Promise<void> {
 
   // Modus-Wechsel vom Renderer (Klick auf Modus-Badge)
   ipcMain.on("jarvis:set-mode", (_, mode: string) => {
-    currentMode = mode as "dictation" | "edit" | "conversation";
+    const prev = currentMode;
+    currentMode = mode as typeof currentMode;
+    if (prev === "file" && currentMode !== "file") currentFile = null;
+    if (currentMode === "file") openFilePicker(prev);
     console.log(`JARVIS: Modus gesetzt auf "${currentMode}"`);
   });
 
@@ -212,9 +254,12 @@ async function initialize(): Promise<void> {
       }
     },
     onDoubleTap: () => {
-      const idx = MODES.indexOf(currentMode);
+      const prev = currentMode;
+      const idx  = MODES.indexOf(currentMode);
       currentMode = MODES[(idx + 1) % MODES.length];
+      if (prev === "file" && currentMode !== "file") currentFile = null;
       pillWindow?.webContents.send("jarvis:mode-update", currentMode);
+      if (currentMode === "file") openFilePicker(prev);
       console.log(`JARVIS: Modus (Doppeltipp) → "${currentMode}"`);
     },
   });
@@ -274,6 +319,21 @@ async function initialize(): Promise<void> {
         }
         const result = await ai.process(selectedText, transcript);
         if (result) await platform.insertText(result);
+      } else if (currentMode === "file") {
+        if (!currentFile) {
+          console.error("JARVIS: Datei-Kontext: keine Datei ausgewählt.");
+          sendStatus("bereit", "Datei");
+          return;
+        }
+        const ai = getAiProvider();
+        if (!ai) {
+          console.error("JARVIS: Kein KI-Schlüssel für Datei-Kontext-Modus.");
+          sendStatus("bereit", "Datei");
+          return;
+        }
+        const answer = await ai.chatWithFile(currentFile, transcript);
+        if (answer) startSpeaking(answer);
+        return;
       } else {
         // Diktat-Modus: Transkript einfügen
         await platform.insertText(transcript);
@@ -281,7 +341,7 @@ async function initialize(): Promise<void> {
     } catch (err) {
       console.error("JARVIS: Verarbeitungsfehler:", err);
     } finally {
-      sendStatus("bereit", currentMode === "edit" ? "Bearbeiten" : "Diktat");
+      if (!speaking) sendStatus("bereit", MODE_LABELS[currentMode]);
     }
   });
 }
