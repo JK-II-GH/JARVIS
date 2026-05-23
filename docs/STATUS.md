@@ -50,7 +50,7 @@
 - [x] Update-Check beim Start (GitHub-Releases-API, manueller Download-Link)
 - [x] GitHub-Repo angelegt + Code gepusht — https://github.com/JK-II-GH/JARVIS
 - [x] Release-Skript (`scripts/release.sh`) — bumpt Version, baut DMGs, erstellt GitHub-Release via gh. Erstes Release `v0.1.0` veröffentlicht.
-- [ ] Windows-Adapter beginnen (`src/platform/windows`)
+- [x] Windows-Adapter begonnen — `src/platform/windows/index.ts` Skelett. Factory in `src/platform/index.ts` schaltet auf `win32` um, alle Methoden werfen `NotImplementedError` mit Hinweis. Implementierung folgt auf echtem Windows-Gerät.
 
 ## Notizen / Erkenntnisse
 

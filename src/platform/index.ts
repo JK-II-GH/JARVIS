@@ -96,5 +96,14 @@ export function createPlatformAdapter(
     const { MacOSAdapter } = require("./macos/index") as typeof import("./macos/index");
     return new MacOSAdapter(getWindowSources);
   }
+  if (process.platform === "win32") {
+    console.warn(
+      "JARVIS: Windows-Adapter ist ein Skelett — die meisten Funktionen werfen " +
+        "NotImplementedError. Siehe src/platform/windows/index.ts.",
+    );
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { WindowsAdapter } = require("./windows/index") as typeof import("./windows/index");
+    return new WindowsAdapter(getWindowSources);
+  }
   throw new Error(`Plattform nicht unterstuetzt: ${process.platform}`);
 }
