@@ -22,7 +22,8 @@
       "Bash(screencapture -x -t jpg /tmp/test_screenshot.jpg)",
       "Bash(sips -Z 1920 /tmp/test_screenshot.jpg)",
       "Read(//tmp/**)",
-      "Bash(osascript)"
+      "Bash(osascript)",
+      "Bash(codesign -dv release/mac-arm64/JARVIS.app)"
     ]
   }
 }

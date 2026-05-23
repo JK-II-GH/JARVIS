@@ -7,10 +7,13 @@
     "start": "npm run build && electron .",
     "build": "tsc",
     "watch": "tsc --watch",
-    "dev": "tsc && electron ."
+    "dev": "tsc && electron .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac"
   },
   "keywords": [],
-  "author": "",
+  "author": "Jürgen Kutschenreuter",
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
@@ -20,6 +23,47 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "electron": "^36.0.0",
+    "electron-builder": "^26.8.1",
     "typescript": "^5.8.0"
+  },
+  "build": {
+    "appId": "ai.jarvis.app",
+    "productName": "JARVIS",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "afterPack": "./build/afterPack.js",
+    "files": [
+      "dist/**/*",
+      "src/renderer/**/*",
+      "package.json",
+      "!**/*.map",
+      "!**/*.ts"
+    ],
+    "asarUnpack": [
+      "**/node_modules/uiohook-napi/**"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "JARVIS benötigt Mikrofonzugriff, um deine Sprachbefehle aufzunehmen.",
+        "NSAppleEventsUsageDescription": "JARVIS steuert andere Apps, um markierten Text zu lesen und Antworten einzufügen.",
+        "NSScreenCaptureDescription": "JARVIS benötigt Bildschirmaufnahme, um Quick Look-Fenster für den Datei-Modus zu erfassen."
+      }
+    },
+    "dmg": {
+      "title": "JARVIS ${version}",
+      "contents": [
+        { "x": 130, "y": 220, "type": "file" },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    }
   }
 }
