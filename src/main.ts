@@ -300,13 +300,14 @@ async function initialize(): Promise<void> {
         pendingSelectedFile = null;
         if (!filePath) {
           console.error("JARVIS: Datei-Kontext: weder Finder-Auswahl noch Screenshot verfügbar.");
-          sendStatus("bereit", "Datei");
+          startSpeaking("Kein Datei-Kontext gefunden. Bitte eine Datei im Finder markieren.");
           return;
         }
         const fileSize = fs.statSync(filePath).size;
         if (fileSize > MAX_FILE_BYTES) {
-          console.error(`JARVIS: Datei zu groß: ${(fileSize / 1024 / 1024).toFixed(1)} MB (max. 20 MB)`);
-          sendStatus("bereit", "Datei");
+          const mb = (fileSize / 1024 / 1024).toFixed(0);
+          console.error(`JARVIS: Datei zu groß: ${mb} MB (max. 20 MB)`);
+          startSpeaking(`Die Datei ist ${mb} Megabyte groß und damit zu groß. Das Maximum liegt bei zwanzig Megabyte.`);
           return;
         }
         const ai = getAiProvider();
