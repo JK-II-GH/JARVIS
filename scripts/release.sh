@@ -70,6 +70,11 @@ echo "▶ DMGs bauen (arm64 + x64) …"
 rm -rf release
 npx electron-builder --mac
 
+# Multi-Arch-Build hinterlässt eine architekturfremde Binary in
+# node_modules/uiohook-napi/build/Release/ — würde den Dev-Start
+# danach sprengen. Wegräumen, damit der Prebuild greift.
+rm -rf node_modules/uiohook-napi/build
+
 # ── GitHub-Release erstellen ──────────────────────────────────────────────
 
 echo "▶ Änderungen committen + Tag setzen …"

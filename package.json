@@ -8,9 +8,10 @@
     "build": "tsc",
     "watch": "tsc --watch",
     "dev": "tsc && electron .",
-    "pack": "npm run build && electron-builder --dir",
-    "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac",
+    "pack": "npm run build && electron-builder --dir && npm run clean:native",
+    "dist": "npm run build && electron-builder && npm run clean:native",
+    "dist:mac": "npm run build && electron-builder --mac && npm run clean:native",
+    "clean:native": "rm -rf node_modules/uiohook-napi/build",
     "release": "bash scripts/release.sh"
   },
   "keywords": [],
