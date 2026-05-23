@@ -42,7 +42,7 @@
 - [x] OpenAI-Implementierung des `AIProvider` (GPT-4o, process + chat)
 - [x] Einstellungsfenster: Anbieterauswahl (Anthropic/OpenAI), API-Schlüssel, ⚙-Button in Pille
 - [x] Einstellungen im App-Datenverzeichnis speichern (`~/Library/Application Support/jarvis/settings.json`)
-- [ ] Datei-Kontext: PDF/Bild auswählen und in den KI-Aufruf laden
+- [x] Datei-Kontext: PDF/Bild auswählen und in den KI-Aufruf laden (max. 20 MB, Anthropic: Bilder+PDF, OpenAI: nur Bilder)
 
 ## Phase 5 — Verteilung
 
