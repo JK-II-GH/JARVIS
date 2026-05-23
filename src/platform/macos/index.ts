@@ -100,7 +100,6 @@ export class MacOSAdapter implements PlatformAdapter {
 
   async resolveFileContext(): Promise<string | null> {
     try {
-      // Frontmost App ermitteln
       const { stdout } = await execAsync(
         `osascript -e 'tell application "System Events" to get name of first process whose frontmost is true'`,
       );
@@ -108,12 +107,47 @@ export class MacOSAdapter implements PlatformAdapter {
       console.log(`JARVIS: Vorderste App = "${frontApp}"`);
 
       if (frontApp === "Finder") {
-        // Finder oder Desktop aktiv → markierte Datei lesen
+        // Quick Look offen? → Screenshot des QL-Fensters
+        const qlPath = await this.captureQuickLookIfOpen();
+        if (qlPath) return qlPath;
+        // Normaler Finder/Desktop → markierte Datei lesen
         return await this.readSelectedFile();
       } else {
         // Andere App → Screenshot des aktiven Fensters
         return await this.captureActiveWindow();
       }
+    } catch {
+      return null;
+    }
+  }
+
+  private async captureQuickLookIfOpen(): Promise<string | null> {
+    try {
+      const { stdout } = await execAsync(
+        `osascript -e 'tell application "System Events"
+          set qlProcs to (every process whose name contains "QuickLook")
+          if (count of qlProcs) = 0 then return ""
+          set qlProc to item 1 of qlProcs
+          if (count of windows of qlProc) = 0 then return ""
+          try
+            set w to first window of qlProc
+            set {x, y} to position of w
+            set {ww, wh} to size of w
+            return (x as string) & "," & (y as string) & "," & (ww as string) & "," & (wh as string)
+          on error
+            return "fullscreen"
+          end try
+        end tell'`,
+      );
+      const result = stdout.trim();
+      if (!result) return null;
+      if (result === "fullscreen") {
+        await execAsync(`screencapture -x "${SCREENSHOT_PATH}"`);
+      } else {
+        await execAsync(`screencapture -x -R "${result}" "${SCREENSHOT_PATH}"`);
+      }
+      console.log(`JARVIS: Quick Look erkannt → Screenshot (${result})`);
+      return SCREENSHOT_PATH;
     } catch {
       return null;
     }
