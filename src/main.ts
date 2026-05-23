@@ -8,6 +8,11 @@ import { WhisperProvider } from "./core/stt/WhisperProvider";
 import { AnthropicProvider } from "./core/ai/AnthropicProvider";
 import { OpenAIProvider } from "./core/ai/OpenAIProvider";
 import type { AIProvider } from "./core/ai/AIProvider";
+import { checkForUpdate } from "./core/UpdateChecker";
+
+// GitHub-Repo für Release-Prüfung (siehe Update-Check beim Start).
+const UPDATE_OWNER = "jkutschenreuter";
+const UPDATE_REPO  = "jarvis";
 
 let pillWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
@@ -107,6 +112,29 @@ function stopSpeaking(): void {
   speaking = false;
   globalShortcut.unregister("Escape");
   sendStatus("bereit", MODE_LABELS[currentMode]);
+}
+
+// ── Update-Check beim Start ────────────────────────────────────────────────
+
+async function checkAndPromptUpdate(): Promise<void> {
+  // Dev-Modus überspringen — `electron .` hat keine sinnvolle App-Version
+  if (!app.isPackaged) {
+    console.log("JARVIS: Update-Check übersprungen (Dev-Modus)");
+    return;
+  }
+  const update = await checkForUpdate(UPDATE_OWNER, UPDATE_REPO, app.getVersion());
+  if (!update) return;
+
+  const { response } = await dialog.showMessageBox({
+    type: "info",
+    title: "JARVIS — Update verfügbar",
+    message: `Version ${update.version} ist verfügbar`,
+    detail: `Du nutzt aktuell ${app.getVersion()}.\n\n${update.notes.slice(0, 400)}`,
+    buttons: ["Download öffnen", "Später"],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (response === 0) shell.openExternal(update.htmlUrl);
 }
 
 // ── Fensterquellen aus Renderer-Prozess holen (ScreenCaptureKit) ───────────
@@ -359,6 +387,14 @@ app.whenReady().then(() => {
   createPillWindow();
   initialize().catch((err) => console.error("JARVIS: Initialisierungsfehler:", err));
   app.on("activate", () => { if (!pillWindow) createPillWindow(); });
+
+  // Update-Check nach kurzer Verzögerung — Pille soll zuerst da sein,
+  // bevor ein Dialog hochkommt
+  setTimeout(() => {
+    checkAndPromptUpdate().catch((err) =>
+      console.error("JARVIS: Update-Check-Fehler:", err),
+    );
+  }, 3000);
 });
 
 app.on("window-all-closed", () => {

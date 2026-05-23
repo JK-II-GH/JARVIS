@@ -46,8 +46,9 @@
 
 ## Phase 5 — Verteilung
 
-- [ ] Build-Konfiguration für macOS (.app / .dmg)
-- [ ] GitHub-Releases-Repo + Auto-Update beim Start
+- [x] Build-Konfiguration für macOS (.app / .dmg) — electron-builder + Ad-hoc-Signatur in `build/afterPack.js`
+- [x] Update-Check beim Start (GitHub-Releases-API, manueller Download-Link)
+- [ ] GitHub-Repo anlegen, Code pushen, erstes Release hochladen
 - [ ] Release-Skript (Version wählen, bauen, hochladen)
 - [ ] Windows-Adapter beginnen (`src/platform/windows`)
 
@@ -69,3 +70,5 @@
 - **Modus-Erkennung**: Automatisch — Text markiert → Bearbeiten-Modus, sonst Diktat.
 - **KI-Schlüssel**: `anthropicApiKey` in `~/Library/Application Support/jarvis/settings.json` eintragen (console.anthropic.com/settings/keys).
 - **Text-Lesen im Bearbeiten-Modus**: Cmd+C darf NICHT während Cmd+Alt gehalten wird simuliert werden — macOS schickt dann Cmd+Alt+C an die Zielapp, was ignoriert wird. Fix: `readSelectedText()` erst in `onHoldEnd` aufrufen (nach Loslassen der Modifier). Transkription und Text-Lesen laufen parallel via `Promise.all`.
+- **electron-builder + Apple Silicon**: Unsignierte arm64-Builds werden von macOS abgewiesen ("killed: 9"). Lösung: `build/afterPack.js` signiert die App ad-hoc (`codesign --force --deep --sign -`). Reicht für lokales Nutzen; für Verteilung an Dritte ist Apple Developer Program nötig.
+- **Auto-Update ohne Signierung**: Klassisches `electron-updater` setzt eine echte Signatur voraus. Stattdessen leichter Ansatz in `src/core/UpdateChecker.ts` — GitHub-Releases-API pollen, bei neuerer Version Dialog mit Download-Link. Funktioniert auch unsigniert.
