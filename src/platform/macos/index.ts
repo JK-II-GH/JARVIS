@@ -98,6 +98,27 @@ export class MacOSAdapter implements PlatformAdapter {
     }
   }
 
+  async resolveFileContext(): Promise<string | null> {
+    try {
+      // Frontmost App ermitteln
+      const { stdout } = await execAsync(
+        `osascript -e 'tell application "System Events" to get name of first process whose frontmost is true'`,
+      );
+      const frontApp = stdout.trim();
+      console.log(`JARVIS: Vorderste App = "${frontApp}"`);
+
+      if (frontApp === "Finder") {
+        // Finder oder Desktop aktiv → markierte Datei lesen
+        return await this.readSelectedFile();
+      } else {
+        // Andere App → Screenshot des aktiven Fensters
+        return await this.captureActiveWindow();
+      }
+    } catch {
+      return null;
+    }
+  }
+
   async captureActiveWindow(): Promise<string> {
     try {
       // Bounds des vordersten Fensters ermitteln

@@ -68,6 +68,13 @@ export interface PlatformAdapter {
    * Bildschirm) und gibt den Pfad zur temporären PNG-Datei zurück.
    */
   captureActiveWindow(): Promise<string>;
+  /**
+   * Ermittelt den passenden Datei-Kontext anhand der aktiven Anwendung:
+   * - Finder/Desktop aktiv → markierte Datei
+   * - Andere App aktiv    → Screenshot des aktiven Fensters
+   * Gibt null zurück wenn kein Kontext ermittelt werden konnte.
+   */
+  resolveFileContext(): Promise<string | null>;
 
   /** Prueft, welche Systemberechtigungen bereits erteilt sind. */
   checkPermissions(): Promise<PermissionStatus>;

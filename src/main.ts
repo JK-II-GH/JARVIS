@@ -216,20 +216,9 @@ async function initialize(): Promise<void> {
           })
           .catch(() => "");
       } else if (currentMode === "file") {
-        // Sofort parallel: Finder-Auswahl lesen UND Screenshot aufnehmen.
-        // Screenshot wird verworfen wenn eine Datei markiert ist.
-        pendingSelectedFile = Promise.all([
-          platform.readSelectedFile(),
-          platform.captureActiveWindow(),
-        ]).then(([filePath, screenshotPath]) => {
-          if (filePath) {
-            console.log(`JARVIS: Finder-Datei = "${filePath}"`);
-            try { fs.unlinkSync(screenshotPath); } catch { /* Screenshot nicht benötigt */ }
-            return filePath;
-          }
-          console.log("JARVIS: keine Finder-Auswahl → Screenshot");
-          return screenshotPath;
-        }).catch(() => null);
+        pendingSelectedFile = platform.resolveFileContext()
+          .then((p) => { console.log(`JARVIS: Datei-Kontext = "${p ?? "keiner"}"`); return p; })
+          .catch(() => null);
       }
     },
     onDoubleTap: () => {
