@@ -67,8 +67,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "jkutschenreuter",
-      "repo": "jarvis"
+      "owner": "JK-II-GH",
+      "repo": "JARVIS"
     }
   }
 }

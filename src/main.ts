@@ -11,8 +11,8 @@ import type { AIProvider } from "./core/ai/AIProvider";
 import { checkForUpdate } from "./core/UpdateChecker";
 
 // GitHub-Repo für Release-Prüfung (siehe Update-Check beim Start).
-const UPDATE_OWNER = "jkutschenreuter";
-const UPDATE_REPO  = "jarvis";
+const UPDATE_OWNER = "JK-II-GH";
+const UPDATE_REPO  = "JARVIS";
 
 let pillWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
