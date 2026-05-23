@@ -1,5 +1,6 @@
 import { app, BrowserWindow, screen, ipcMain, dialog, globalShortcut } from "electron";
 import * as path from "path";
+import * as fs from "fs";
 import { createPlatformAdapter } from "./platform/index";
 import type { PlatformAdapter } from "./platform/index";
 import { SettingsManager } from "./core/settings";
@@ -17,10 +18,12 @@ let settings: SettingsManager;
 let currentMode: "dictation" | "edit" | "conversation" | "file" = "dictation";
 // Im Bearbeiten-Modus: Promise das beim Loslassen des Hotkeys gestartet wird
 let pendingSelectedText: Promise<string> | null = null;
+// Im Datei-Modus: Promise auf den Dateipfad (Finder-Auswahl oder Screenshot)
+let pendingSelectedFile: Promise<string | null> | null = null;
 // TTS läuft gerade
 let speaking = false;
-// Datei-Kontext-Modus: aktuell geladene Datei
-let currentFile: string | null = null;
+
+const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB
 
 const MODES: Array<"dictation" | "edit" | "conversation" | "file"> = ["dictation", "edit", "conversation", "file"];
 const MODE_LABELS: Record<string, string> = {
@@ -76,42 +79,6 @@ function openSettingsWindow(): void {
   settingsWindow.on("closed", () => { settingsWindow = null; });
 }
 
-async function openFilePicker(prevMode: typeof currentMode): Promise<void> {
-  const result = await dialog.showOpenDialog({
-    title: "Datei für KI-Kontext auswählen",
-    properties: ["openFile"],
-    filters: [
-      { name: "Bilder & PDFs", extensions: ["jpg", "jpeg", "png", "gif", "webp", "pdf"] },
-    ],
-  });
-  if (result.canceled || result.filePaths.length === 0) {
-    // Modus zurücksetzen wenn Auswahl abgebrochen
-    currentMode = prevMode;
-    pillWindow?.webContents.send("jarvis:mode-update", currentMode);
-    sendStatus("bereit", MODE_LABELS[currentMode]);
-    return;
-  }
-  const filePath = result.filePaths[0];
-  const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const fileSize = (require("fs") as typeof import("fs")).statSync(filePath).size;
-  if (fileSize > MAX_BYTES) {
-    const mb = (fileSize / 1024 / 1024).toFixed(1);
-    dialog.showMessageBox({
-      type: "warning",
-      title: "JARVIS — Datei zu groß",
-      message: `Datei ist ${mb} MB groß`,
-      detail: "JARVIS unterstützt Dateien bis 20 MB. Bitte eine kleinere Datei wählen.",
-      buttons: ["OK"],
-    });
-    currentMode = prevMode;
-    pillWindow?.webContents.send("jarvis:mode-update", currentMode);
-    sendStatus("bereit", MODE_LABELS[currentMode]);
-    return;
-  }
-  currentFile = filePath;
-  sendStatus("bereit", "Datei");
-}
 
 function getAiProvider(): AIProvider | null {
   const cfg = settings.getAiConfig();
@@ -195,10 +162,7 @@ async function initialize(): Promise<void> {
 
   // Modus-Wechsel vom Renderer (Klick auf Modus-Badge)
   ipcMain.on("jarvis:set-mode", (_, mode: string) => {
-    const prev = currentMode;
     currentMode = mode as typeof currentMode;
-    if (prev === "file" && currentMode !== "file") currentFile = null;
-    if (currentMode === "file") openFilePicker(prev);
     console.log(`JARVIS: Modus gesetzt auf "${currentMode}"`);
   });
 
@@ -251,15 +215,27 @@ async function initialize(): Promise<void> {
             return text;
           })
           .catch(() => "");
+      } else if (currentMode === "file") {
+        // Sofort parallel: Finder-Auswahl lesen UND Screenshot aufnehmen.
+        // Screenshot wird verworfen wenn eine Datei markiert ist.
+        pendingSelectedFile = Promise.all([
+          platform.readSelectedFile(),
+          platform.captureActiveWindow(),
+        ]).then(([filePath, screenshotPath]) => {
+          if (filePath) {
+            console.log(`JARVIS: Finder-Datei = "${filePath}"`);
+            try { fs.unlinkSync(screenshotPath); } catch { /* Screenshot nicht benötigt */ }
+            return filePath;
+          }
+          console.log("JARVIS: keine Finder-Auswahl → Screenshot");
+          return screenshotPath;
+        }).catch(() => null);
       }
     },
     onDoubleTap: () => {
-      const prev = currentMode;
-      const idx  = MODES.indexOf(currentMode);
+      const idx = MODES.indexOf(currentMode);
       currentMode = MODES[(idx + 1) % MODES.length];
-      if (prev === "file" && currentMode !== "file") currentFile = null;
       pillWindow?.webContents.send("jarvis:mode-update", currentMode);
-      if (currentMode === "file") openFilePicker(prev);
       console.log(`JARVIS: Modus (Doppeltipp) → "${currentMode}"`);
     },
   });
@@ -320,8 +296,16 @@ async function initialize(): Promise<void> {
         const result = await ai.process(selectedText, transcript);
         if (result) await platform.insertText(result);
       } else if (currentMode === "file") {
-        if (!currentFile) {
-          console.error("JARVIS: Datei-Kontext: keine Datei ausgewählt.");
+        const filePath = await (pendingSelectedFile ?? Promise.resolve(null));
+        pendingSelectedFile = null;
+        if (!filePath) {
+          console.error("JARVIS: Datei-Kontext: weder Finder-Auswahl noch Screenshot verfügbar.");
+          sendStatus("bereit", "Datei");
+          return;
+        }
+        const fileSize = fs.statSync(filePath).size;
+        if (fileSize > MAX_FILE_BYTES) {
+          console.error(`JARVIS: Datei zu groß: ${(fileSize / 1024 / 1024).toFixed(1)} MB (max. 20 MB)`);
           sendStatus("bereit", "Datei");
           return;
         }
@@ -331,7 +315,7 @@ async function initialize(): Promise<void> {
           sendStatus("bereit", "Datei");
           return;
         }
-        const answer = await ai.chatWithFile(currentFile, transcript);
+        const answer = await ai.chatWithFile(filePath, transcript);
         if (answer) startSpeaking(answer);
         return;
       } else {

@@ -58,6 +58,17 @@ export interface PlatformAdapter {
   /** Fuegt Text an der aktuellen Cursorposition ein. */
   insertText(text: string): Promise<void>;
 
+  /**
+   * Gibt den Pfad der im Finder/Desktop markierten Datei zurück,
+   * oder null wenn keine Datei markiert ist.
+   */
+  readSelectedFile(): Promise<string | null>;
+  /**
+   * Erstellt einen Screenshot des vordersten Fensters (Fallback: ganzer
+   * Bildschirm) und gibt den Pfad zur temporären PNG-Datei zurück.
+   */
+  captureActiveWindow(): Promise<string>;
+
   /** Prueft, welche Systemberechtigungen bereits erteilt sind. */
   checkPermissions(): Promise<PermissionStatus>;
   /** Oeffnet die passenden Systemeinstellungen fuer eine fehlende Berechtigung. */
