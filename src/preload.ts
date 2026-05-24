@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld("jarvis", {
     ipcRenderer.on("jarvis:start-recording", () => cb()),
   onStopRecording: (cb: () => void) =>
     ipcRenderer.on("jarvis:stop-recording", () => cb()),
+  onCancelRecording: (cb: () => void) =>
+    ipcRenderer.on("jarvis:cancel-recording", () => cb()),
   onStatusUpdate: (cb: (status: string, modus: string) => void) =>
     ipcRenderer.on("jarvis:status-update", (_, status: string, modus: string) =>
       cb(status, modus),

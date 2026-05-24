@@ -255,18 +255,26 @@
       }
     });
 
+    function teardownMic() {
+      if (!processor) return;
+      try { processor.disconnect(); } catch {}
+      try { micStream && micStream.getTracks().forEach(t => t.stop()); } catch {}
+      try { audioCtx && audioCtx.close(); } catch {}
+      processor = null;
+      micStream = null;
+      audioCtx  = null;
+    }
+
     window.jarvis.onStopRecording(() => {
       if (!processor) return;
 
       const nativeSampleRate = audioCtx.sampleRate;
-      processor.disconnect();
-      micStream.getTracks().forEach(t => t.stop());
-      audioCtx.close();
-      processor = null;
-
       const totalLen = pcmChunks.reduce((n, c) => n + c.length, 0);
+
+      teardownMic();
+
       // Mindestens ~0,3 s bei nativem Sample-Rate
-      if (totalLen < nativeSampleRate * 0.3) return;
+      if (totalLen < nativeSampleRate * 0.3) { pcmChunks = []; return; }
 
       const pcm = new Float32Array(totalLen);
       let off = 0;
@@ -275,6 +283,12 @@
 
       // Nativen Sample-Rate korrekt in WAV-Header schreiben
       window.jarvis.sendAudioData(encodeWav(pcm, nativeSampleRate), 'audio/wav');
+    });
+
+    // Tap (vor Hold-Threshold losgelassen) — vorbereitete Aufnahme verwerfen
+    window.jarvis.onCancelRecording(() => {
+      teardownMic();
+      pcmChunks = [];
     });
 
     // ── IPC vom Main-Prozess ────────────────────────────────────────────────

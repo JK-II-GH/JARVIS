@@ -32,10 +32,20 @@ export interface PermissionStatus {
 
 /** Ereignisse des globalen Hotkeys. */
 export interface HotkeyHandlers {
-  /** Tasten wurden gedrueckt und gehalten — Aufnahme startet. */
+  /**
+   * Beide Modifier-Tasten wurden gedrückt — Aufnahme wird VORBEREITET.
+   * Wird sofort gefeuert, ohne auf den Hold-Threshold zu warten. Damit
+   * läuft das Öffnen des Mikrofons parallel zur Reaktionszeit des Nutzers.
+   * Falls anschließend `onPrepareCancel` statt `onHoldStart` kommt, wird
+   * die Aufnahme verworfen.
+   */
+  onPrepareStart: () => void;
+  /** Hold-Threshold überschritten — Aufnahme ist bestätigt, UI auf "Aufnahme". */
   onHoldStart: () => void;
-  /** Tasten wurden losgelassen — Aufnahme endet. */
+  /** Hold beendet — Aufnahme verarbeiten. */
   onHoldEnd: () => void;
+  /** Vor dem Hold-Threshold losgelassen (Tap) — vorbereitete Aufnahme verwerfen. */
+  onPrepareCancel: () => void;
   /** Doppeltipp auf die Tastenkombination — Moduswechsel. */
   onDoubleTap: () => void;
 }

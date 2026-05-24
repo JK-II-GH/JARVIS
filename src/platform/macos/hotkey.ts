@@ -62,6 +62,9 @@ export class MacHotkey {
       if (this.mod1Down && this.mod2Down && !this.holdActive) {
         this.holdActive = true;
         this.pressTime = Date.now();
+        // Aufnahme SOFORT vorbereiten — Mikrofon-Öffnen läuft parallel zur
+        // Reaktionszeit des Nutzers. Wird bei Tap später verworfen.
+        handlers.onPrepareStart();
         this.holdTimer = setTimeout(() => {
           if (this.holdActive) {
             this.isHolding = true;
@@ -90,6 +93,8 @@ export class MacHotkey {
           this.tapCount = 0;
           handlers.onHoldEnd();
         } else {
+          // Tap — die vorbereitete Aufnahme verwerfen
+          handlers.onPrepareCancel();
           const now = Date.now();
           if (now - this.lastReleaseTime < DOUBLE_TAP_WINDOW_MS) {
             this.tapCount++;

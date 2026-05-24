@@ -389,12 +389,21 @@ async function initialize(): Promise<void> {
   // Hotkey-Handler einmalig zusammenstellen — werden beim Re-Register
   // mit anderem Combo unverändert wiederverwendet
   hotkeyHandlers = {
-    onHoldStart: () => {
-      // Laufende TTS beim neuen Hotkey-Druck stoppen
+    onPrepareStart: () => {
+      // Sofort beim Drücken beider Modifier: Mikrofon-Setup im Renderer
+      // anstoßen, damit beim Hold-Confirm bereits Audio fließt. Laufende
+      // TTS hier schon stoppen, weil sie ohnehin obsolet ist.
       if (speaking) stopSpeaking();
       pendingSelectedText = null;
-      sendStatus("aufnahme", MODE_LABELS[currentMode]);
       pillWindow?.webContents.send("jarvis:start-recording");
+    },
+    onPrepareCancel: () => {
+      // Tap — vorbereitete Aufnahme verwerfen, KEINE Verarbeitung
+      pillWindow?.webContents.send("jarvis:cancel-recording");
+    },
+    onHoldStart: () => {
+      // Hold bestätigt: jetzt zeigt die Pille "Aufnahme"
+      sendStatus("aufnahme", MODE_LABELS[currentMode]);
     },
     onHoldEnd: () => {
       sendStatus("verarbeitet", MODE_LABELS[currentMode]);
