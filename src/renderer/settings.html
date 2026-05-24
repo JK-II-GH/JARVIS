@@ -11,22 +11,21 @@
       font-size: 13px;
       background: #1c1c1e;
       color: rgba(255,255,255,0.85);
-      padding: 24px;
-      min-height: 100vh;
+      padding: 18px;
     }
 
     h1 {
-      font-size: 17px;
+      font-size: 16px;
       font-weight: 600;
-      margin-bottom: 24px;
+      margin-bottom: 16px;
       color: #fff;
     }
 
     .section {
       background: rgba(255,255,255,0.06);
       border-radius: 10px;
-      padding: 16px;
-      margin-bottom: 16px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
     }
 
     .section-title {
@@ -35,14 +34,14 @@
       text-transform: uppercase;
       letter-spacing: 0.06em;
       color: rgba(255,255,255,0.4);
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
 
     .field {
       display: flex;
       align-items: center;
       gap: 12px;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
 
     .field:last-child { margin-bottom: 0; }
@@ -125,7 +124,8 @@
     .hint {
       font-size: 11px;
       color: rgba(255,255,255,0.3);
-      margin-top: 4px;
+      margin-top: 2px;
+      margin-bottom: 4px;
       margin-left: 152px;
     }
 
@@ -144,7 +144,7 @@
       display: flex;
       justify-content: flex-end;
       gap: 8px;
-      margin-top: 20px;
+      margin-top: 14px;
     }
 
     button {
@@ -168,16 +168,6 @@
       background: #0a84ff;
       color: #fff;
     }
-
-    .saved-hint {
-      font-size: 12px;
-      color: #4ade80;
-      align-self: center;
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-
-    .saved-hint.visible { opacity: 1; }
   </style>
 </head>
 <body>
@@ -225,8 +215,23 @@
     <div class="hint"><a href="#" data-url="https://console.groq.com/keys">console.groq.com/keys</a> — kostenlos</div>
   </div>
 
+  <div class="section">
+    <div class="section-title">Hotkey</div>
+    <div class="field">
+      <label>Tastenkombination</label>
+      <select id="hotkey">
+        <option value="cmd+alt">⌘ + ⌥  (Cmd + Option)</option>
+        <option value="cmd+ctrl">⌘ + ⌃  (Cmd + Control)</option>
+        <option value="cmd+shift">⌘ + ⇧  (Cmd + Shift)</option>
+        <option value="ctrl+alt">⌃ + ⌥  (Control + Option)</option>
+        <option value="ctrl+shift">⌃ + ⇧  (Control + Shift)</option>
+        <option value="alt+shift">⌥ + ⇧  (Option + Shift)</option>
+      </select>
+    </div>
+    <div class="hint">Halten zum Sprechen, Doppeltipp wechselt den Modus.</div>
+  </div>
+
   <div class="actions">
-    <span class="saved-hint" id="savedHint">Gespeichert ✓</span>
     <button class="btn-cancel" id="btnCancel">Abbrechen</button>
     <button class="btn-save" id="btnSave">Speichern</button>
   </div>
@@ -240,6 +245,17 @@
       document.getElementById('anthropicKey').value = s.anthropicKey  || '';
       document.getElementById('openaiKey').value    = s.openaiKey     || '';
       document.getElementById('groqKey').value      = s.groqKey       || '';
+      document.getElementById('hotkey').value       = s.hotkey        || 'cmd+alt';
+    });
+
+    // Inhalt vermessen → Hauptprozess passt das Fenster automatisch an.
+    // Wir warten auf den ersten Paint, damit Font-Metriken und Boxhöhen
+    // korrekt sind.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const h = Math.ceil(document.body.getBoundingClientRect().height);
+        api.fitWindow(h);
+      });
     });
 
     document.getElementById('btnSave').addEventListener('click', async () => {
@@ -248,10 +264,9 @@
         anthropicKey: document.getElementById('anthropicKey').value.trim(),
         openaiKey:    document.getElementById('openaiKey').value.trim(),
         groqKey:      document.getElementById('groqKey').value.trim(),
+        hotkey:       document.getElementById('hotkey').value,
       });
-      const hint = document.getElementById('savedHint');
-      hint.classList.add('visible');
-      setTimeout(() => hint.classList.remove('visible'), 2000);
+      api.close();
     });
 
     document.getElementById('btnCancel').addEventListener('click', () => {

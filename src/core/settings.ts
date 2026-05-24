@@ -1,6 +1,16 @@
 import { app } from "electron";
 import * as fs from "fs";
 import * as path from "path";
+import { DEFAULT_HOTKEY, type HotkeyCombo } from "../platform/index";
+
+const VALID_HOTKEYS: HotkeyCombo[] = [
+  "cmd+alt",
+  "cmd+ctrl",
+  "cmd+shift",
+  "ctrl+alt",
+  "ctrl+shift",
+  "alt+shift",
+];
 
 interface SettingsData {
   openaiApiKey?: string;
@@ -8,6 +18,7 @@ interface SettingsData {
   anthropicApiKey?: string;
   perplexityApiKey?: string;
   aiProvider?: "anthropic" | "openai";
+  hotkey?: HotkeyCombo;
 }
 
 export interface SttConfig {
@@ -82,6 +93,11 @@ export class SettingsManager {
 
   getAiProvider(): "anthropic" | "openai" {
     return this.data.aiProvider ?? "anthropic";
+  }
+
+  getHotkey(): HotkeyCombo {
+    const h = this.data.hotkey;
+    return h && VALID_HOTKEYS.includes(h) ? h : DEFAULT_HOTKEY;
   }
 
   private load(): SettingsData {

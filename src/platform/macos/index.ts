@@ -4,7 +4,7 @@ import { promisify } from "util";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import type { PlatformAdapter, HotkeyHandlers, PermissionStatus } from "../index";
+import type { PlatformAdapter, HotkeyHandlers, HotkeyCombo, PermissionStatus } from "../index";
 
 const SCREENSHOT_PATH = path.join(os.tmpdir(), "jarvis_screenshot.jpg");
 import { MacHotkey } from "./hotkey";
@@ -22,8 +22,8 @@ export class MacOSAdapter implements PlatformAdapter {
     private readonly getWindowSources: () => Promise<{ id: string; name: string }[]>,
   ) {}
 
-  async registerHotkey(handlers: HotkeyHandlers): Promise<void> {
-    await this.hotkey.register(handlers);
+  async registerHotkey(handlers: HotkeyHandlers, combo: HotkeyCombo): Promise<void> {
+    await this.hotkey.register(handlers, combo);
   }
 
   async unregisterHotkey(): Promise<void> {

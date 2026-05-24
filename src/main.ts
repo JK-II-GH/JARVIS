@@ -2,7 +2,7 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, g
 import * as path from "path";
 import * as fs from "fs";
 import { createPlatformAdapter } from "./platform/index";
-import type { PlatformAdapter } from "./platform/index";
+import type { PlatformAdapter, HotkeyHandlers } from "./platform/index";
 import { SettingsManager } from "./core/settings";
 import { WhisperProvider } from "./core/stt/WhisperProvider";
 import { AnthropicProvider } from "./core/ai/AnthropicProvider";
@@ -19,6 +19,7 @@ let settingsWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let platform: PlatformAdapter;
 let settings: SettingsManager;
+let hotkeyHandlers: HotkeyHandlers | null = null;
 
 // Zustand des aktuellen Vorgangs
 let currentMode: "dictation" | "edit" | "conversation" | "file" = "dictation";
@@ -69,7 +70,9 @@ function openSettingsWindow(): void {
 
   settingsWindow = new BrowserWindow({
     width: 480,
-    height: 380,
+    height: 200,          // Platzhalter — wird per fitWindow vom Renderer angepasst
+    useContentSize: true, // Höhe meint die Inhaltsfläche, nicht inkl. Titlebar
+    show: false,          // Erst anzeigen, wenn die Größe stimmt — kein Flicker
     title: "JARVIS — Einstellungen",
     resizable: false,
     minimizable: false,
@@ -84,6 +87,17 @@ function openSettingsWindow(): void {
   settingsWindow.loadFile(path.join(__dirname, "../src/renderer/settings.html"));
   settingsWindow.on("closed", () => { settingsWindow = null; });
 }
+
+// Renderer meldet die gewünschte Inhaltshöhe — Fenster wird passend
+// gesetzt und sichtbar gemacht. Damit wächst es bei neuen Settings-
+// Sektionen automatisch mit, ohne dass wir die Höhe hier pflegen müssen.
+ipcMain.on("jarvis:settings-fit", (_, contentHeight: number) => {
+  if (!settingsWindow) return;
+  const [w] = settingsWindow.getContentSize();
+  const clamped = Math.min(900, Math.max(200, Math.round(contentHeight)));
+  settingsWindow.setContentSize(w, clamped);
+  if (!settingsWindow.isVisible()) settingsWindow.show();
+});
 
 // ── Tray-Icon (Menüleiste) ────────────────────────────────────────────────
 
@@ -277,26 +291,39 @@ async function initialize(): Promise<void> {
       anthropicKey: keys.anthropicApiKey,
       openaiKey:    keys.openaiApiKey,
       groqKey:      keys.groqApiKey,
+      hotkey:       settings.getHotkey(),
     };
   });
 
-  ipcMain.handle("jarvis:settings-save", (_, data: Record<string, string>) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fs = require("fs") as typeof import("fs");
+  ipcMain.handle("jarvis:settings-save", async (_, data: Record<string, string>) => {
+    const previousHotkey = settings.getHotkey();
     const raw = JSON.parse(fs.readFileSync(settings.settingsFilePath, "utf-8") || "{}");
     if (data.anthropicKey) raw.anthropicApiKey = data.anthropicKey; else delete raw.anthropicApiKey;
     if (data.openaiKey)    raw.openaiApiKey    = data.openaiKey;    else delete raw.openaiApiKey;
     if (data.groqKey)      raw.groqApiKey      = data.groqKey;      else delete raw.groqApiKey;
     raw.aiProvider = data.aiProvider || "anthropic";
+    if (data.hotkey) raw.hotkey = data.hotkey;
     fs.writeFileSync(settings.settingsFilePath, JSON.stringify(raw, null, 2));
     settings = new SettingsManager();
-    console.log(`JARVIS: Einstellungen gespeichert, Anbieter="${raw.aiProvider}"`);
+    console.log(`JARVIS: Einstellungen gespeichert, Anbieter="${raw.aiProvider}", Hotkey="${raw.hotkey ?? "default"}"`);
+
+    // Hotkey live neu registrieren, falls sich die Kombi geändert hat
+    const newHotkey = settings.getHotkey();
+    if (newHotkey !== previousHotkey && hotkeyHandlers) {
+      try {
+        await platform.registerHotkey(hotkeyHandlers, newHotkey);
+        console.log(`JARVIS: Hotkey live neu registriert (${previousHotkey} → ${newHotkey})`);
+      } catch (err) {
+        console.error("JARVIS: Hotkey-Reregistrierung fehlgeschlagen:", err);
+      }
+    }
   });
 
   ipcMain.on("jarvis:settings-close", () => settingsWindow?.close());
 
-  // Hotkey: Cmd+Alt halten
-  await platform.registerHotkey({
+  // Hotkey-Handler einmalig zusammenstellen — werden beim Re-Register
+  // mit anderem Combo unverändert wiederverwendet
+  hotkeyHandlers = {
     onHoldStart: () => {
       // Laufende TTS beim neuen Hotkey-Druck stoppen
       if (speaking) stopSpeaking();
@@ -308,7 +335,7 @@ async function initialize(): Promise<void> {
       sendStatus("verarbeitet", MODE_LABELS[currentMode]);
       pillWindow?.webContents.send("jarvis:stop-recording");
       if (currentMode === "edit") {
-        // Text lesen nachdem Cmd+Alt losgelassen wurden → kein Modifier-Konflikt
+        // Text lesen nachdem Modifier losgelassen wurden — kein Konflikt
         pendingSelectedText = platform.readSelectedText()
           .then((text) => {
             console.log(`JARVIS: markierter Text = "${text.slice(0, 60)}..." (${text.length} Zeichen)`);
@@ -328,7 +355,10 @@ async function initialize(): Promise<void> {
       rebuildTrayMenu();
       console.log(`JARVIS: Modus (Doppeltipp) → "${currentMode}"`);
     },
-  });
+  };
+
+  await platform.registerHotkey(hotkeyHandlers, settings.getHotkey());
+  console.log(`JARVIS: Hotkey registriert (${settings.getHotkey()})`);
 
   // Audio empfangen → transkribieren → je nach Modus verarbeiten
   ipcMain.on("jarvis:audio-data", async (_, data: ArrayBuffer, mimeType: string) => {

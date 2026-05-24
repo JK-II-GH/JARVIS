@@ -18,7 +18,7 @@
  *                             (Electron desktopCapturer reicht u. U. schon)
  */
 
-import type { PlatformAdapter, HotkeyHandlers, PermissionStatus } from "../index";
+import type { PlatformAdapter, HotkeyHandlers, HotkeyCombo, PermissionStatus } from "../index";
 
 class NotImplementedError extends Error {
   constructor(method: string) {
@@ -40,7 +40,7 @@ export class WindowsAdapter implements PlatformAdapter {
     void this._getWindowSources;
   }
 
-  async registerHotkey(_handlers: HotkeyHandlers): Promise<void> {
+  async registerHotkey(_handlers: HotkeyHandlers, _combo: HotkeyCombo): Promise<void> {
     throw new NotImplementedError("registerHotkey");
   }
 

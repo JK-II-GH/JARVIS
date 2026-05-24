@@ -41,6 +41,24 @@ export interface HotkeyHandlers {
 }
 
 /**
+ * Welche zwei Modifier-Tasten den Hotkey bilden. Reihenfolge im String
+ * ist nicht relevant — "cmd+alt" und "alt+cmd" verhalten sich identisch.
+ *
+ * Auf Windows wird "cmd" implementierungsseitig auf die Windows-Taste
+ * abgebildet (siehe `src/platform/windows`).
+ */
+export type HotkeyCombo =
+  | "cmd+alt"
+  | "cmd+ctrl"
+  | "cmd+shift"
+  | "ctrl+alt"
+  | "ctrl+shift"
+  | "alt+shift";
+
+/** Default-Hotkey, wenn in den Einstellungen nichts hinterlegt ist. */
+export const DEFAULT_HOTKEY: HotkeyCombo = "cmd+alt";
+
+/**
  * Plattformspezifische Funktionen. Jede Zielplattform liefert genau
  * eine Implementierung dieser Schnittstelle.
  */
@@ -48,8 +66,12 @@ export interface PlatformAdapter {
   /** Name der Plattform, z. B. "macos". */
   readonly name: string;
 
-  /** Registriert den globalen Hotkey (Halten + Doppeltipp). */
-  registerHotkey(handlers: HotkeyHandlers): Promise<void>;
+  /**
+   * Registriert den globalen Hotkey (Halten + Doppeltipp). Kann beliebig
+   * oft mit unterschiedlichem `combo` aufgerufen werden — die Implementierung
+   * tauscht intern die Listener.
+   */
+  registerHotkey(handlers: HotkeyHandlers, combo: HotkeyCombo): Promise<void>;
   /** Entfernt den globalen Hotkey wieder. */
   unregisterHotkey(): Promise<void>;
 
