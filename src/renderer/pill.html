@@ -186,13 +186,15 @@
 
     // ── Modus-Umschalter ────────────────────────────────────────────────────
 
-    function applyModus(index) {
+    function applyModus(index, { fromMain = false } = {}) {
       modusIndex = index;
       modusBadge.textContent = MODI[modusIndex];
       modusBadge.classList.toggle('aktiv',     modusIndex === 1);
       modusBadge.classList.toggle('gespraech', modusIndex === 2);
       modusBadge.classList.toggle('datei',     modusIndex === 3);
-      window.jarvis.setMode(MODI_VALUES[modusIndex]);
+      // Nicht zurückspiegeln, wenn der Wechsel vom Main kam — sonst
+      // pingt das Mode-Update zwischen Main und Renderer hin und her
+      if (!fromMain) window.jarvis.setMode(MODI_VALUES[modusIndex]);
       // Badge-Text wechselt die Breite (z.B. "Diktat" vs "Bearbeiten") —
       // die Pille muss sich mit anpassen, sonst wird das Zahnrad abgeschnitten
       animatePillResize();
@@ -207,10 +209,11 @@
       window.jarvis.openSettings();
     });
 
-    // Doppeltipp vom Main-Prozess
+    // Mode-Update vom Main (Doppeltipp oder Tray-Klick) — kein setMode
+    // zurückschicken, sonst pingt der Wechsel als Roundtrip
     window.jarvis.onModeUpdate((mode) => {
       const idx = MODI_VALUES.indexOf(mode);
-      if (idx !== -1) applyModus(idx);
+      if (idx !== -1) applyModus(idx, { fromMain: true });
     });
 
     // ── Status ──────────────────────────────────────────────────────────────
@@ -289,8 +292,17 @@
     let analyser  = null;
     let pegelRaf  = null;
     let pcmChunks = [];
+    // Generations-Zähler: erhöht sich bei jedem onStartRecording + onCancel.
+    // Wenn ein verspätet aufgelöstes getUserMedia-Promise nicht mehr zum
+    // aktiven Aufnahme-Versuch gehört, schließen wir den Stream sofort
+    // (verhindert "stummen Mic", der orange Dot bleibt sonst hängen).
+    let recordingGeneration = 0;
+    let recordingActive = false;
 
     window.jarvis.onStartRecording(async () => {
+      const myGen = ++recordingGeneration;
+      recordingActive = true;
+
       // Im Datei-Modus Fensterquellen aus dem Renderer-Kontext holen
       // (ScreenCaptureKit-Berechtigung wird hier korrekt ausgelöst)
       if (MODI_VALUES[modusIndex] === 'file') {
@@ -304,12 +316,30 @@
       }
 
       pcmChunks = [];
+      let stream;
       try {
         // Nativen Sample-Rate verwenden — erzwungene 16 kHz werden von macOS
         // ignoriert und führen zu falschem WAV-Header → Whisper-Halluzinationen
-        micStream = await navigator.mediaDevices.getUserMedia({
+        stream = await navigator.mediaDevices.getUserMedia({
           audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }
         });
+      } catch (err) {
+        console.error('JARVIS Renderer: Mikrofon-Fehler:', err);
+        recordingActive = false;
+        window.jarvis.sendRecordingFailed('mic-denied');
+        return;
+      }
+
+      // Während getUserMedia pending war, könnte ein Cancel passiert sein.
+      // Dann sind wir nicht mehr die "aktive" Generation → Stream sofort
+      // schließen, sonst bleibt das Mikro offen.
+      if (myGen !== recordingGeneration || !recordingActive) {
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
+
+      try {
+        micStream = stream;
         audioCtx  = new AudioContext();
         const src = audioCtx.createMediaStreamSource(micStream);
         processor = audioCtx.createScriptProcessor(4096, 1, 1);
@@ -328,8 +358,10 @@
         src.connect(analyser);
         startPegelLoop();
       } catch (err) {
-        console.error('JARVIS Renderer: Mikrofon-Fehler:', err);
-        setStatus('bereit');
+        console.error('JARVIS Renderer: Audio-Setup fehlgeschlagen:', err);
+        recordingActive = false;
+        teardownMic();
+        window.jarvis.sendRecordingFailed('audio-setup-failed');
       }
     });
 
@@ -384,15 +416,26 @@
     }
 
     window.jarvis.onStopRecording(() => {
-      if (!processor) return;
+      recordingActive = false;
+      if (!processor) {
+        // Aufnahme wurde nie aufgebaut (z.B. getUserMedia hat zu lange
+        // gedauert oder schlug fehl) — Main muss aus "verarbeitet" raus
+        window.jarvis.sendRecordingFailed('no-audio');
+        return;
+      }
 
       const nativeSampleRate = audioCtx.sampleRate;
       const totalLen = pcmChunks.reduce((n, c) => n + c.length, 0);
 
       teardownMic();
 
-      // Mindestens ~0,3 s bei nativem Sample-Rate
-      if (totalLen < nativeSampleRate * 0.3) { pcmChunks = []; return; }
+      // Mindestens ~0,3 s bei nativem Sample-Rate — sonst kein sinnvolles
+      // Audio. Main muss trotzdem aus "verarbeitet" raus.
+      if (totalLen < nativeSampleRate * 0.3) {
+        pcmChunks = [];
+        window.jarvis.sendRecordingFailed('too-short');
+        return;
+      }
 
       const pcm = new Float32Array(totalLen);
       let off = 0;
@@ -403,8 +446,12 @@
       window.jarvis.sendAudioData(encodeWav(pcm, nativeSampleRate), 'audio/wav');
     });
 
-    // Tap (vor Hold-Threshold losgelassen) — vorbereitete Aufnahme verwerfen
+    // Tap (vor Hold-Threshold losgelassen) — vorbereitete Aufnahme verwerfen.
+    // Generation hochzählen, damit ein noch laufendes getUserMedia-Promise
+    // nicht doch noch einen Stream aufmacht.
     window.jarvis.onCancelRecording(() => {
+      recordingActive = false;
+      recordingGeneration++;
       teardownMic();
       pcmChunks = [];
     });

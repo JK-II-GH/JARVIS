@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld("jarvis", {
   // Renderer → Main
   sendAudioData: (data: ArrayBuffer, mimeType: string) =>
     ipcRenderer.send("jarvis:audio-data", data, mimeType),
+  sendRecordingFailed: (reason: string) =>
+    ipcRenderer.send("jarvis:recording-failed", reason),
   setMode: (mode: string) =>
     ipcRenderer.send("jarvis:set-mode", mode),
   openSettings: () =>

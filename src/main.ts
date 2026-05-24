@@ -33,6 +33,10 @@ let hotkeyHandlers: HotkeyHandlers | null = null;
 
 // Zustand des aktuellen Vorgangs
 let currentMode: AppMode = "dictation";
+// Modus zum Zeitpunkt des Hotkey-Hold-Endes — wird beim Audio-Eintreffen
+// verwendet, damit ein zwischenzeitlicher Tray-/Doppeltipp-Wechsel die
+// Verarbeitung nicht in den falschen Pfad schickt
+let pendingMode: AppMode | null = null;
 // Im Bearbeiten-Modus: Promise das beim Loslassen des Hotkeys gestartet wird
 let pendingSelectedText: Promise<string> | null = null;
 // Im Datei-Modus: Promise auf den Dateipfad (Finder-Auswahl oder Screenshot)
@@ -287,11 +291,23 @@ async function checkAndPromptUpdate(): Promise<void> {
 
 function getWindowSources(): Promise<{ id: string; name: string }[]> {
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve([]), 3000);
-    ipcMain.once("jarvis:window-sources-result", (_, sources) => {
+    let settled = false;
+    const listener = (_: Electron.IpcMainEvent, sources: { id: string; name: string }[]) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       resolve(sources);
-    });
+    };
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      // Listener aktiv entfernen — `ipcMain.once` würde sonst beim
+      // verspäteten Renderer-Reply das nächste getWindowSources-Promise
+      // unkontrolliert auflösen.
+      ipcMain.removeListener("jarvis:window-sources-result", listener);
+      resolve([]);
+    }, 3000);
+    ipcMain.once("jarvis:window-sources-result", listener);
     pillWindow?.webContents.send("jarvis:get-window-sources");
   });
 }
@@ -504,6 +520,9 @@ async function initialize(): Promise<void> {
       sendStatus("aufnahme", MODE_LABELS[currentMode]);
     },
     onHoldEnd: () => {
+      // Mode "einfrieren" für die nachfolgende Audio-Verarbeitung —
+      // ein Tray-Klick oder Doppeltipp dazwischen darf den Pfad nicht ändern
+      pendingMode = currentMode;
       sendStatus("verarbeitet", MODE_LABELS[currentMode]);
       pillWindow?.webContents.send("jarvis:stop-recording");
       if (currentMode === "edit") {
@@ -532,9 +551,25 @@ async function initialize(): Promise<void> {
   await platform.registerHotkey(hotkeyHandlers, settings.getHotkey());
   console.log(`JARVIS: Hotkey registriert (${settings.getHotkey()})`);
 
+  // Renderer meldet, dass die Aufnahme NICHT verarbeitet werden kann
+  // (Mic verweigert, zu kurz, getUserMedia-Race etc.). Wir resetten den
+  // Status, damit die Pille nicht in "verarbeitet" hängen bleibt.
+  ipcMain.on("jarvis:recording-failed", (_, reason: string) => {
+    console.log(`JARVIS: Aufnahme fehlgeschlagen (${reason}) — Status zurückgesetzt`);
+    pendingMode = null;
+    pendingSelectedText = null;
+    pendingSelectedFile = null;
+    if (!speaking) sendStatus("bereit", MODE_LABELS[currentMode]);
+  });
+
   // Audio empfangen → transkribieren → je nach Modus verarbeiten
   ipcMain.on("jarvis:audio-data", async (_, data: ArrayBuffer, mimeType: string) => {
-    const modusLabel = MODE_LABELS[currentMode] ?? "Diktat";
+    // pendingMode wurde beim onHoldEnd eingefroren — damit landet die
+    // Verarbeitung im richtigen Pfad, auch wenn der User zwischenzeitlich
+    // den Modus gewechselt hat. Fallback auf currentMode wenn nichts da ist.
+    const mode: AppMode = pendingMode ?? currentMode;
+    pendingMode = null;
+    const modusLabel = MODE_LABELS[mode] ?? "Diktat";
     try {
       const stt = pickSttProvider();
       if (!stt) {
@@ -555,25 +590,25 @@ async function initialize(): Promise<void> {
         return;
       }
 
-      console.log(`JARVIS: Modus="${currentMode}", selectedText.length=${selectedText.length}, transcript="${transcript}"`);
+      console.log(`JARVIS: Modus="${mode}", selectedText.length=${selectedText.length}, transcript="${transcript}"`);
 
-      if (currentMode === "conversation") {
+      if (mode === "conversation") {
         const ai = getAiProvider();
         if (!ai) {
           console.error("JARVIS: Kein KI-Schlüssel für Gesprächsmodus.");
-          sendStatus("bereit", "Gespräch");
+          sendStatus("bereit", modusLabel);
           return;
         }
         const answer = await ai.chat(transcript);
         if (answer) startSpeaking(answer);
         return; // sendStatus wird von startSpeaking/stopSpeaking übernommen
-      } else if (currentMode === "edit") {
+      } else if (mode === "edit") {
         if (!selectedText) {
           console.error(
             "JARVIS: Bearbeiten-Modus aktiv, aber kein markierter Text gelesen.\n" +
             "Text vor dem Hotkey markieren und Bedienungshilfen-Berechtigung prüfen.",
           );
-          sendStatus("bereit", "Bearbeiten");
+          sendStatus("bereit", modusLabel);
           return;
         }
         const ai = getAiProvider();
@@ -582,12 +617,12 @@ async function initialize(): Promise<void> {
             "JARVIS: Kein KI-Schlüssel für Text-bearbeiten-Modus.\n" +
             `Trage einen API-Schlüssel in ${settings.settingsFilePath} ein.`,
           );
-          sendStatus("bereit", "Bearbeiten");
+          sendStatus("bereit", modusLabel);
           return;
         }
         const result = await ai.process(selectedText, transcript);
         if (result) await platform.insertText(result);
-      } else if (currentMode === "file") {
+      } else if (mode === "file") {
         const filePath = await (pendingSelectedFile ?? Promise.resolve(null));
         pendingSelectedFile = null;
         if (!filePath) {
@@ -605,7 +640,7 @@ async function initialize(): Promise<void> {
         const ai = getAiProvider();
         if (!ai) {
           console.error("JARVIS: Kein KI-Schlüssel für Datei-Kontext-Modus.");
-          sendStatus("bereit", "Datei");
+          sendStatus("bereit", modusLabel);
           return;
         }
         const answer = await ai.chatWithFile(filePath, transcript);
