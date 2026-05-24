@@ -424,6 +424,13 @@ async function initialize(): Promise<void> {
 // ── App-Lebenszyklus ───────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
+  // In Dev-Builds zeigt Electron sonst sein Default-Icon im Dock —
+  // wir setzen unseres explizit. Im gepackten Build ist es schon im .icns.
+  if (!app.isPackaged && process.platform === "darwin") {
+    const devIcon = path.join(__dirname, "../build/icon.png");
+    if (fs.existsSync(devIcon)) app.dock?.setIcon(devIcon);
+  }
+
   createPillWindow();
   createTray();
   initialize().catch((err) => console.error("JARVIS: Initialisierungsfehler:", err));

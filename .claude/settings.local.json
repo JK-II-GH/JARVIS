@@ -40,7 +40,12 @@
       "Bash(python3 scripts/gen-tray-icon.py 'src/renderer/trayIconTemplate@2x.png' 44)",
       "Bash(pkill -f \"JARVIS.app/Contents/MacOS/JARVIS\")",
       "Bash(file node_modules/uiohook-napi/prebuilds/*/node.napi.node)",
-      "Bash(file node_modules/uiohook-napi/prebuilds/darwin-arm64/*.node)"
+      "Bash(file node_modules/uiohook-napi/prebuilds/darwin-arm64/*.node)",
+      "Bash(time python3 scripts/gen-app-icon.py build/icon.png 1024)",
+      "Bash(/usr/bin/sips -g pixelWidth -g pixelHeight release/mac-arm64/JARVIS.app/Contents/Resources/icon.icns)",
+      "Bash(open \"/Users/jkutschenreuter/Library/CloudStorage/OneDrive-Persönlich/AI/01 Claude/Claude Code/JARVIS/release/mac-arm64/JARVIS.app\")",
+      "Bash(python3 scripts/gen-app-icon.py /tmp/icon_preview.png 512)",
+      "Bash(open /tmp/icon_preview.png)"
     ]
   }
 }
