@@ -83,6 +83,15 @@ export type HotkeyCombo =
 export const DEFAULT_HOTKEY: HotkeyCombo = "cmd+alt";
 
 /**
+ * Rückgabetyp von resolveFileContext — entweder ein Dateipfad (klassisch)
+ * oder ein extrahierter Artikel-Text (wenn ein Browser im Vordergrund ist
+ * und der Inhalt erfolgreich gelesen werden konnte).
+ */
+export type FileContext =
+  | { kind: "file"; path: string }
+  | { kind: "article"; url: string; title: string; text: string };
+
+/**
  * Plattformspezifische Funktionen. Jede Zielplattform liefert genau
  * eine Implementierung dieser Schnittstelle.
  */
@@ -115,12 +124,12 @@ export interface PlatformAdapter {
    */
   captureActiveWindow(): Promise<string>;
   /**
-   * Ermittelt den passenden Datei-Kontext anhand der aktiven Anwendung:
-   * - Finder/Desktop aktiv → markierte Datei
-   * - Andere App aktiv    → Screenshot des aktiven Fensters
-   * Gibt null zurück wenn kein Kontext ermittelt werden konnte.
+   * Ermittelt den passenden Datei-Kontext anhand der aktiven Anwendung.
+   * Variante "file":    Pfad zu einer Datei oder einem Screenshot.
+   * Variante "article": extrahierter Artikel-Text einer Webseite (Safari).
+   * null wenn kein Kontext ermittelt werden konnte.
    */
-  resolveFileContext(): Promise<string | null>;
+  resolveFileContext(): Promise<FileContext | null>;
 
   /** Prueft, welche Systemberechtigungen bereits erteilt sind. */
   checkPermissions(): Promise<PermissionStatus>;

@@ -18,7 +18,7 @@
  *                             (Electron desktopCapturer reicht u. U. schon)
  */
 
-import type { PlatformAdapter, HotkeyHandlers, HotkeyCombo, PermissionStatus } from "../index";
+import type { PlatformAdapter, HotkeyHandlers, HotkeyCombo, PermissionStatus, FileContext } from "../index";
 
 class NotImplementedError extends Error {
   constructor(method: string) {
@@ -87,7 +87,7 @@ export class WindowsAdapter implements PlatformAdapter {
     throw new NotImplementedError("captureActiveWindow");
   }
 
-  async resolveFileContext(): Promise<string | null> {
+  async resolveFileContext(): Promise<FileContext | null> {
     throw new NotImplementedError("resolveFileContext");
   }
 

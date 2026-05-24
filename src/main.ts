@@ -2,7 +2,7 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, s
 import * as path from "path";
 import * as fs from "fs";
 import { createPlatformAdapter, APP_MODES, APP_MODE_LABELS } from "./platform/index";
-import type { PlatformAdapter, HotkeyHandlers, AppMode, HotkeyCombo } from "./platform/index";
+import type { PlatformAdapter, HotkeyHandlers, AppMode, HotkeyCombo, FileContext } from "./platform/index";
 import { SettingsManager } from "./core/settings";
 import { WhisperProvider } from "./core/stt/WhisperProvider";
 import { LocalWhisperProvider } from "./core/stt/LocalWhisperProvider";
@@ -40,14 +40,92 @@ let currentMode: AppMode = "dictation";
 let pendingMode: AppMode | null = null;
 // Im Bearbeiten-Modus: Promise das beim Loslassen des Hotkeys gestartet wird
 let pendingSelectedText: Promise<string> | null = null;
-// Im Datei-Modus: Promise auf den Dateipfad (Finder-Auswahl oder Screenshot)
-let pendingSelectedFile: Promise<string | null> | null = null;
+// Im Datei-Modus: Promise auf den Kontext (Datei, Screenshot oder Artikel)
+let pendingSelectedFile: Promise<FileContext | null> | null = null;
 // TTS läuft gerade
 let speaking = false;
 
 // Re-Export für die zahlreichen In-Datei-Aufrufer
 const MODES = APP_MODES;
 const MODE_LABELS = APP_MODE_LABELS;
+
+// ── Artikel-Kontext (Safari → Readability) ────────────────────────────────
+
+/** Hartes Modell-Token-Limit (Anthropic Sonnet hat ~200k, wir lassen Luft). */
+const ARTICLE_TOKEN_HARD_LIMIT = 180_000;
+/** Schwelle, ab der wir den Nutzer wegen Größe fragen. */
+const ARTICLE_CHAR_PROMPT_THRESHOLD = 50_000;
+/** Grobe Daumenregel: ~4 Zeichen pro Token. Reicht für Schwellenwert-Logik. */
+const CHARS_PER_TOKEN = 4;
+
+/**
+ * Verarbeitet einen Artikel-Kontext im Datei-Modus. Zeigt bei großen Texten
+ * Sicherheits-Dialoge, baut den kombinierten Prompt und ruft ai.chat() auf.
+ * Gibt true zurück wenn die KI-Antwort gestartet wurde, false bei Abbruch
+ * oder Konfigurationsfehler.
+ */
+async function handleArticleContext(
+  ctx: { url: string; title: string; text: string },
+  transcript: string,
+  modusLabel: string,
+): Promise<boolean> {
+  let text = ctx.text;
+  const tokens = Math.ceil(text.length / CHARS_PER_TOKEN);
+  const tokensFmt = tokens.toLocaleString("de-DE");
+
+  if (tokens > ARTICLE_TOKEN_HARD_LIMIT) {
+    const { response } = await dialog.showMessageBox({
+      type: "warning",
+      title: "JARVIS — Inhalt zu groß",
+      message: "Der Artikel überschreitet das Modell-Limit",
+      detail:
+        `Der Artikel "${ctx.title}" hat etwa ${tokensFmt} Tokens, ` +
+        `Maximum sind ${ARTICLE_TOKEN_HARD_LIMIT.toLocaleString("de-DE")}.\n\n` +
+        `Wenn du fortfährst, wird nur der Anfang übergeben — der Rest wird abgeschnitten.`,
+      buttons: ["Fortfahren", "Abbrechen"],
+      defaultId: 1,
+      cancelId: 1,
+    });
+    if (response !== 0) {
+      console.log("JARVIS: Artikel-Verarbeitung abgebrochen (zu groß)");
+      sendStatus("bereit", modusLabel);
+      return false;
+    }
+    text = text.slice(0, ARTICLE_TOKEN_HARD_LIMIT * CHARS_PER_TOKEN);
+  } else if (text.length > ARTICLE_CHAR_PROMPT_THRESHOLD) {
+    const { response } = await dialog.showMessageBox({
+      type: "question",
+      title: "JARVIS — Längerer Artikel",
+      message: "Der Artikel ist recht lang",
+      detail:
+        `"${ctx.title}" hat etwa ${tokensFmt} Tokens (${text.length.toLocaleString("de-DE")} Zeichen). ` +
+        `Möchtest du das so an die KI schicken?`,
+      buttons: ["Fortfahren", "Abbrechen"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response !== 0) {
+      console.log("JARVIS: Artikel-Verarbeitung abgebrochen (nach Hinweis-Dialog)");
+      sendStatus("bereit", modusLabel);
+      return false;
+    }
+  }
+
+  const ai = getAiProvider();
+  if (!ai) {
+    console.error("JARVIS: Kein KI-Schlüssel für Artikel-Verarbeitung.");
+    sendStatus("bereit", modusLabel);
+    return false;
+  }
+
+  const prompt =
+    `Hier ist der redaktionelle Hauptinhalt der Webseite "${ctx.title}" (${ctx.url}):\n\n` +
+    `${text}\n\n` +
+    `Frage: ${transcript}`;
+  const answer = await ai.chat(prompt);
+  if (answer) startSpeaking(answer);
+  return true;
+}
 
 /**
  * Flacht ein Error-Objekt zu name + message + stack ab, damit beim
@@ -584,7 +662,14 @@ async function setupHotkey(): Promise<void> {
           .catch(() => "");
       } else if (currentMode === "file") {
         pendingSelectedFile = platform.resolveFileContext()
-          .then((p) => { console.log(`JARVIS: Datei-Kontext = "${p ?? "keiner"}"`); return p; })
+          .then((ctx) => {
+            if (!ctx) { console.log("JARVIS: Datei-Kontext = keiner"); return null; }
+            if (ctx.kind === "article")
+              console.log(`JARVIS: Datei-Kontext = Artikel "${ctx.title.slice(0, 60)}" (${ctx.text.length} Zeichen)`);
+            else
+              console.log(`JARVIS: Datei-Kontext = Datei "${ctx.path}"`);
+            return ctx;
+          })
           .catch(() => null);
       }
     },
@@ -663,13 +748,22 @@ function bindAudioIPC(): void {
         const result = await ai.process(selectedText, transcript);
         if (result) await platform.insertText(result);
       } else if (mode === "file") {
-        const filePath = await (pendingSelectedFile ?? Promise.resolve(null));
+        const ctx = await (pendingSelectedFile ?? Promise.resolve(null));
         pendingSelectedFile = null;
-        if (!filePath) {
+        if (!ctx) {
           console.error("JARVIS: Datei-Kontext: weder Finder-Auswahl noch Screenshot verfügbar.");
           startSpeaking("Kein Datei-Kontext gefunden. Bitte eine Datei im Finder markieren.");
           return;
         }
+
+        if (ctx.kind === "article") {
+          const done = await handleArticleContext(ctx, transcript, modusLabel);
+          if (!done) return; // User hat abgebrochen
+          return;
+        }
+
+        // ctx.kind === "file"
+        const filePath = ctx.path;
         const fileSize = fs.statSync(filePath).size;
         if (fileSize > MAX_FILE_BYTES) {
           const mb = (fileSize / 1024 / 1024).toFixed(0);
