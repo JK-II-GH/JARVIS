@@ -63,6 +63,7 @@ export class WindowsAdapter implements PlatformAdapter {
       microphone: true,
       inputMonitoring: true,
       accessibility: true,
+      screenRecording: true,
     };
   }
 
@@ -88,5 +89,18 @@ export class WindowsAdapter implements PlatformAdapter {
 
   async resolveFileContext(): Promise<string | null> {
     throw new NotImplementedError("resolveFileContext");
+  }
+
+  setAppIcon(_iconPath: string): void {
+    // Windows: kein Dock — sinnvollerweise wird das App-Icon vom Build
+    // gesetzt. Hier No-op.
+  }
+
+  registerSpeakInterrupt(_cb: () => void): void {
+    // Wird erst sinnvoll, wenn der TTS-Pfad auf Windows steht.
+  }
+
+  unregisterSpeakInterrupt(): void {
+    // No-op — siehe registerSpeakInterrupt.
   }
 }

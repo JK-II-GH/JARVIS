@@ -40,6 +40,8 @@ export interface PermissionStatus {
   inputMonitoring: boolean;
   /** Bedienungshilfen — noetig zum Lesen und Einfuegen von Text. */
   accessibility: boolean;
+  /** Bildschirmaufnahme — noetig fuer Quick-Look- und Fenster-Screenshots. */
+  screenRecording: boolean;
 }
 
 /** Ereignisse des globalen Hotkeys. */
@@ -129,6 +131,21 @@ export interface PlatformAdapter {
   speak(text: string): Promise<void>;
   /** Bricht eine laufende Sprachausgabe ab. */
   stopSpeaking(): void;
+
+  /**
+   * Setzt das Dock-/Taskbar-Icon der laufenden App. Wird auf gepackten
+   * Builds aus dem .icns gelesen; hier hauptsaechlich fuer den Dev-Modus
+   * relevant, damit nicht das Default-Electron-Icon erscheint.
+   */
+  setAppIcon(iconPath: string): void;
+
+  /**
+   * Registriert einen Cancel-Hotkey (z. B. Escape), der waehrend laufender
+   * TTS aktiv ist und den uebergebenen Callback feuert. Wird durch
+   * `unregisterSpeakInterrupt` wieder entfernt.
+   */
+  registerSpeakInterrupt(cb: () => void): void;
+  unregisterSpeakInterrupt(): void;
 }
 
 /** Liefert die Implementierung fuer das aktuelle Betriebssystem. */

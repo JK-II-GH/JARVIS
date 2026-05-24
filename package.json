@@ -47,14 +47,11 @@
     "asarUnpack": [
       "**/node_modules/uiohook-napi/**"
     ],
-    "extraResources": [
-      {
-        "from": "build/whisper-bin/whisper-cli",
-        "to": "bin/whisper-cli"
-      }
-    ],
     "mac": {
       "category": "public.app-category.productivity",
+      "extraResources": [
+        { "from": "build/whisper-bin/whisper-cli", "to": "bin/whisper-cli" }
+      ],
       "target": [
         { "target": "dmg", "arch": ["arm64", "x64"] }
       ],

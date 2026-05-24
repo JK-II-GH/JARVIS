@@ -70,15 +70,30 @@ export async function checkForUpdate(
   }
 }
 
-/** Semver-Vergleich (nur Major.Minor.Patch, ohne Prereleases). */
+/**
+ * Semver-Vergleich für Versionen wie 1.2.3 oder 1.2.3-beta.1. Prerelease-
+ * Suffixe (alles nach dem ersten "-") gelten als KLEINER als die nackte
+ * Version, also gilt 1.2.3 > 1.2.3-beta.1. Build-Metadaten (nach "+")
+ * werden ignoriert. Reicht für unsere GitHub-Release-Tags.
+ */
 function isNewer(a: string, b: string): boolean {
-  const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
-  const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const da = pa[i] ?? 0;
-    const db = pb[i] ?? 0;
-    if (da > db) return true;
-    if (da < db) return false;
+  const pa = parseSemver(a);
+  const pb = parseSemver(b);
+  for (let i = 0; i < 3; i++) {
+    if (pa.numbers[i] > pb.numbers[i]) return true;
+    if (pa.numbers[i] < pb.numbers[i]) return false;
   }
-  return false;
+  // Major.Minor.Patch sind gleich → Prereleases zählen schlechter
+  if (pa.prerelease === "" && pb.prerelease !== "") return true;
+  if (pa.prerelease !== "" && pb.prerelease === "") return false;
+  return pa.prerelease > pb.prerelease;
+}
+
+function parseSemver(v: string): { numbers: number[]; prerelease: string } {
+  // Build-Metadaten abschneiden
+  const withoutBuild = v.split("+")[0];
+  const [core, ...preParts] = withoutBuild.split("-");
+  const numbers = core.split(".").map((n) => parseInt(n, 10) || 0);
+  while (numbers.length < 3) numbers.push(0);
+  return { numbers: numbers.slice(0, 3), prerelease: preParts.join("-") };
 }

@@ -169,7 +169,8 @@ function doFindWhisperBinary(): string | null {
 
 /**
  * Lädt das angegebene Modell mit Fortschritts-Callback.
- * Resolved sobald die Datei vollständig geschrieben ist.
+ * Resolved sobald die Datei vollständig geschrieben und atomar umbenannt
+ * ist. Bei Fehlern wird die .part-Datei verlässlich aufgeräumt.
  */
 export async function downloadModel(
   model: LocalSttModel,
@@ -189,25 +190,28 @@ export async function downloadModel(
   const etag  = (res.headers.get("etag") || "").replace(/^W\//, "").replace(/"/g, "");
   let received = 0;
 
-  // Schreiben als Stream
   const fileStream = fs.createWriteStream(tmp);
-  const reader = res.body.getReader();
   try {
+    const reader = res.body.getReader();
     // eslint-disable-next-line no-constant-condition
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      if (value) {
-        received += value.length;
-        await new Promise<void>((resolve, reject) => {
-          fileStream.write(value, (err) => (err ? reject(err) : resolve()));
-        });
-        onProgress(received, total);
+      if (!value) continue;
+      // Backpressure-safe: warten wenn der Sink "drain" signalisiert
+      if (!fileStream.write(value)) {
+        await new Promise<void>((r) => fileStream.once("drain", () => r()));
       }
+      received += value.length;
+      onProgress(received, total);
     }
+  } catch (err) {
+    // Halbe Datei löschen — sonst rumkriegt der nächste Versuch ein
+    // verschmierten .part-Rest, oder das Sidecar wird falsch geschrieben
+    try { fs.unlinkSync(tmp); } catch { /* ignorieren */ }
+    throw err;
   } finally {
-    fileStream.end();
-    await new Promise<void>((r) => fileStream.once("close", () => r()));
+    await new Promise<void>((r) => fileStream.end(() => r()));
   }
 
   // Atomisches Umbenennen — verhindert halbe Modelle wenn etwas abbricht

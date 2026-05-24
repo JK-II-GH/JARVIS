@@ -28,7 +28,6 @@ export class MacHotkey {
   private mod1Down = false;
   private mod2Down = false;
   private holdActive = false;
-  private pressTime = 0;
   private isHolding = false;
   private holdTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -61,7 +60,6 @@ export class MacHotkey {
 
       if (this.mod1Down && this.mod2Down && !this.holdActive) {
         this.holdActive = true;
-        this.pressTime = Date.now();
         // Aufnahme SOFORT vorbereiten — Mikrofon-Öffnen läuft parallel zur
         // Reaktionszeit des Nutzers. Wird bei Tap später verworfen.
         handlers.onPrepareStart();
@@ -151,6 +149,5 @@ export class MacHotkey {
     this.isHolding = false;
     this.tapCount = 0;
     this.lastReleaseTime = 0;
-    this.pressTime = 0;
   }
 }

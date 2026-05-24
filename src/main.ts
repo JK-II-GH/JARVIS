@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, globalShortcut, systemPreferences, shell } from "electron";
+import { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, shell } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { createPlatformAdapter, APP_MODES, APP_MODE_LABELS } from "./platform/index";
@@ -19,6 +19,7 @@ import { AnthropicProvider } from "./core/ai/AnthropicProvider";
 import { OpenAIProvider } from "./core/ai/OpenAIProvider";
 import type { AIProvider } from "./core/ai/AIProvider";
 import { checkForUpdate } from "./core/UpdateChecker";
+import { MAX_FILE_BYTES } from "./core/limits";
 
 // GitHub-Repo für Release-Prüfung (siehe Update-Check beim Start).
 const UPDATE_OWNER = "JK-II-GH";
@@ -44,14 +45,45 @@ let pendingSelectedFile: Promise<string | null> | null = null;
 // TTS läuft gerade
 let speaking = false;
 
-const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB
-
 // Re-Export für die zahlreichen In-Datei-Aufrufer
 const MODES = APP_MODES;
 const MODE_LABELS = APP_MODE_LABELS;
 
+/**
+ * Flacht ein Error-Objekt zu name + message + stack ab, damit beim
+ * Loggen keine Header / Tokens / großen Objekte einer SDK-Fehlerantwort
+ * mit ausgegeben werden.
+ */
+function logError(prefix: string, err: unknown): void {
+  if (err instanceof Error) {
+    console.error(`${prefix} ${err.name}: ${err.message}`);
+    if (err.stack) console.error(err.stack);
+  } else {
+    console.error(`${prefix} ${String(err)}`);
+  }
+}
+
 function getFeedbackPath(): string {
   return path.join(app.getPath("userData"), "feedback.md");
+}
+
+// Mutex-Kette für feedback.md — Schreibungen werden seriell ausgeführt,
+// damit gleichzeitige Speicher-Klicks keine ineinandergeschachtelten
+// Einträge erzeugen.
+let feedbackChain: Promise<void> = Promise.resolve();
+
+async function doSaveFeedback(t: string): Promise<void> {
+  const file = getFeedbackPath();
+  const ts = new Date().toLocaleString("de-DE", {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit",
+  });
+  await fs.promises.mkdir(path.dirname(file), { recursive: true });
+  try { await fs.promises.access(file); }
+  catch { await fs.promises.writeFile(file, "# JARVIS Feedback\n"); }
+  await fs.promises.appendFile(file, `\n## ${ts}\n\n${t}\n`);
+  console.log(`JARVIS: Feedback gespeichert in ${file}`);
+  rebuildTrayMenu();
 }
 
 // ── Pille ──────────────────────────────────────────────────────────────────
@@ -246,13 +278,10 @@ function sendStatus(
 function startSpeaking(text: string): void {
   speaking = true;
   sendStatus("spricht", MODE_LABELS[currentMode]);
-  // Doppel-Registrierung von Escape vermeiden — uIOhook wäre langfristig
-  // sauberer (siehe Batch 7), aktuell reicht das defensive Unregister davor.
-  globalShortcut.unregister("Escape");
-  globalShortcut.register("Escape", stopSpeaking);
+  platform.registerSpeakInterrupt(stopSpeaking);
 
   platform.speak(text)
-    .catch((err) => console.error("JARVIS: TTS-Fehler:", err))
+    .catch((err) => logError("JARVIS: TTS-Fehler:", err))
     .finally(() => { if (speaking) stopSpeaking(); });
 }
 
@@ -260,7 +289,7 @@ function stopSpeaking(): void {
   if (!speaking) return;
   platform.stopSpeaking();
   speaking = false;
-  globalShortcut.unregister("Escape");
+  platform.unregisterSpeakInterrupt();
   sendStatus("bereit", MODE_LABELS[currentMode]);
 }
 
@@ -318,10 +347,10 @@ async function initialize(): Promise<void> {
   settings = new SettingsManager();
   platform = createPlatformAdapter(getWindowSources);
 
-  // Screen-Recording-Status prüfen — nötig für Quick Look-Fenstererkennung
-  const screenStatus = systemPreferences.getMediaAccessStatus("screen");
-  console.log(`JARVIS: Screen Recording Status = "${screenStatus}"`);
-  if (screenStatus !== "granted") {
+  const perms = await platform.checkPermissions();
+
+  // Screen-Recording-Status — nötig für Quick Look-Fenstererkennung
+  if (!perms.screenRecording) {
     dialog.showMessageBox({
       type: "info",
       title: "JARVIS — Bildschirmaufnahme",
@@ -331,14 +360,9 @@ async function initialize(): Promise<void> {
         "Systemeinstellungen → Datenschutz & Sicherheit → Bildschirmaufnahme aktivieren.",
       buttons: ["Einstellungen öffnen", "Später"],
     }).then(({ response }) => {
-      if (response === 0)
-        shell.openExternal(
-          "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
-        );
+      if (response === 0) platform.openPermissionSettings("screenRecording");
     });
   }
-
-  const perms = await platform.checkPermissions();
 
   // Mikrofon-Berechtigung
   if (!perms.microphone) {
@@ -466,28 +490,21 @@ async function initialize(): Promise<void> {
         await platform.registerHotkey(hotkeyHandlers, newHotkey);
         console.log(`JARVIS: Hotkey live neu registriert (${previousHotkey} → ${newHotkey})`);
       } catch (err) {
-        console.error("JARVIS: Hotkey-Reregistrierung fehlgeschlagen:", err);
+        logError("JARVIS: Hotkey-Reregistrierung fehlgeschlagen:", err);
       }
     }
   });
 
   ipcMain.on("jarvis:settings-close", () => settingsWindow?.close());
 
-  // Feedback: Eintrag mit Zeitstempel an feedback.md anhängen
+  // Feedback: Eintrag mit Zeitstempel an feedback.md anhängen. Über
+  // feedbackChain serialisieren — sonst können parallele Klicks zu
+  // ineinander verschachtelten Einträgen führen.
   ipcMain.handle("jarvis:feedback-save", (_, text: string) => {
     const t = String(text ?? "").trim();
     if (!t) return false;
-    const file = getFeedbackPath();
-    const ts = new Date().toLocaleString("de-DE", {
-      year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit",
-    });
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    if (!fs.existsSync(file)) fs.writeFileSync(file, "# JARVIS Feedback\n");
-    fs.appendFileSync(file, `\n## ${ts}\n\n${t}\n`);
-    console.log(`JARVIS: Feedback gespeichert in ${file}`);
-    rebuildTrayMenu(); // damit "Feedback öffnen ..." aktiv wird
-    return true;
+    feedbackChain = feedbackChain.then(() => doSaveFeedback(t));
+    return feedbackChain.then(() => true).catch(() => false);
   });
 
   ipcMain.on("jarvis:feedback-open", () => {
@@ -651,7 +668,7 @@ async function initialize(): Promise<void> {
         await platform.insertText(transcript);
       }
     } catch (err) {
-      console.error("JARVIS: Verarbeitungsfehler:", err);
+      logError("JARVIS: Verarbeitungsfehler:", err);
     } finally {
       if (!speaking) sendStatus("bereit", MODE_LABELS[currentMode]);
     }
@@ -661,23 +678,26 @@ async function initialize(): Promise<void> {
 // ── App-Lebenszyklus ───────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
-  // In Dev-Builds zeigt Electron sonst sein Default-Icon im Dock —
-  // wir setzen unseres explizit. Im gepackten Build ist es schon im .icns.
-  if (!app.isPackaged && process.platform === "darwin") {
-    const devIcon = path.join(__dirname, "../build/icon.png");
-    if (fs.existsSync(devIcon)) app.dock?.setIcon(devIcon);
-  }
-
   createPillWindow();
   createTray();
-  initialize().catch((err) => console.error("JARVIS: Initialisierungsfehler:", err));
+  initialize()
+    .then(() => {
+      // In Dev-Builds zeigt Electron sonst sein Default-Icon im Dock —
+      // wir setzen unseres explizit. Im gepackten Build ist es schon
+      // im .icns. Erst NACH initialize(), weil dort der platform-Adapter
+      // erzeugt wird.
+      if (!app.isPackaged) {
+        platform.setAppIcon(path.join(__dirname, "../build/icon.png"));
+      }
+    })
+    .catch((err) => logError("JARVIS: Initialisierungsfehler:", err));
   app.on("activate", () => { if (!pillWindow) createPillWindow(); });
 
   // Update-Check nach kurzer Verzögerung — Pille soll zuerst da sein,
   // bevor ein Dialog hochkommt
   setTimeout(() => {
     checkAndPromptUpdate().catch((err) =>
-      console.error("JARVIS: Update-Check-Fehler:", err),
+      logError("JARVIS: Update-Check-Fehler:", err),
     );
   }, 3000);
 });
@@ -687,6 +707,6 @@ app.on("window-all-closed", () => {
 });
 
 app.on("will-quit", async () => {
-  globalShortcut.unregisterAll();
+  platform?.unregisterSpeakInterrupt();
   await platform?.unregisterHotkey();
 });
