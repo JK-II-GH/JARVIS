@@ -12,6 +12,9 @@ const VALID_HOTKEYS: HotkeyCombo[] = [
   "alt+shift",
 ];
 
+export type SttMode = "cloud" | "local";
+export type LocalSttModel = "tiny" | "base" | "small";
+
 interface SettingsData {
   openaiApiKey?: string;
   groqApiKey?: string;
@@ -19,6 +22,8 @@ interface SettingsData {
   perplexityApiKey?: string;
   aiProvider?: "anthropic" | "openai";
   hotkey?: HotkeyCombo;
+  sttMode?: SttMode;
+  sttLocalModel?: LocalSttModel;
 }
 
 export interface SttConfig {
@@ -98,6 +103,15 @@ export class SettingsManager {
   getHotkey(): HotkeyCombo {
     const h = this.data.hotkey;
     return h && VALID_HOTKEYS.includes(h) ? h : DEFAULT_HOTKEY;
+  }
+
+  getSttMode(): SttMode {
+    return this.data.sttMode === "local" ? "local" : "cloud";
+  }
+
+  getLocalSttModel(): LocalSttModel {
+    const m = this.data.sttLocalModel;
+    return m === "tiny" || m === "small" ? m : "base";
   }
 
   private load(): SettingsData {

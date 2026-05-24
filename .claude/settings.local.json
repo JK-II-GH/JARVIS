@@ -45,7 +45,10 @@
       "Bash(/usr/bin/sips -g pixelWidth -g pixelHeight release/mac-arm64/JARVIS.app/Contents/Resources/icon.icns)",
       "Bash(open \"/Users/jkutschenreuter/Library/CloudStorage/OneDrive-Persönlich/AI/01 Claude/Claude Code/JARVIS/release/mac-arm64/JARVIS.app\")",
       "Bash(python3 scripts/gen-app-icon.py /tmp/icon_preview.png 512)",
-      "Bash(open /tmp/icon_preview.png)"
+      "Bash(open /tmp/icon_preview.png)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(brew list *)",
+      "Bash(whisper-cli --help)"
     ]
   }
 }

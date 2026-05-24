@@ -205,14 +205,41 @@
   <div class="section">
     <div class="section-title">Spracherkennung (STT)</div>
     <div class="field">
-      <label>Groq API-Key</label>
-      <div class="input-wrap">
-        <input type="password" id="groqKey" placeholder="gsk_..." autocomplete="off" />
-        <button class="clear-btn" data-target="groqKey" tabindex="-1" title="Löschen">✕</button>
-        <button class="eye-btn" data-target="groqKey" tabindex="-1" title="Anzeigen">👁</button>
+      <label>Modus</label>
+      <select id="sttMode">
+        <option value="cloud">Cloud (Groq / OpenAI)</option>
+        <option value="local">Lokal (whisper.cpp)</option>
+      </select>
+    </div>
+    <div id="cloudBlock">
+      <div class="field">
+        <label>Groq API-Key</label>
+        <div class="input-wrap">
+          <input type="password" id="groqKey" placeholder="gsk_..." autocomplete="off" />
+          <button class="clear-btn" data-target="groqKey" tabindex="-1" title="Löschen">✕</button>
+          <button class="eye-btn" data-target="groqKey" tabindex="-1" title="Anzeigen">👁</button>
+        </div>
+      </div>
+      <div class="hint"><a href="#" data-url="https://console.groq.com/keys">console.groq.com/keys</a> — kostenlos</div>
+    </div>
+    <div id="localBlock" style="display:none">
+      <div class="field">
+        <label>Modell</label>
+        <select id="sttLocalModel">
+          <option value="tiny">tiny &nbsp;(~75 MB, schnell)</option>
+          <option value="base">base &nbsp;(~142 MB, ausgewogen)</option>
+          <option value="small">small &nbsp;(~466 MB, genauer)</option>
+        </select>
+      </div>
+      <div class="field" id="modelStatusRow">
+        <label>Status</label>
+        <div id="modelStatus" style="flex:1; font-size:12px; color:rgba(255,255,255,0.6);">…</div>
+        <button id="btnDownload" style="display:none; background:rgba(99,179,237,0.3); color:#fff; padding:5px 12px; border-radius:6px; border:none; font-size:12px; cursor:pointer;">Herunterladen</button>
+      </div>
+      <div class="hint" id="binaryHint" style="display:none; color:#f87171;">
+        <code>whisper-cli</code> nicht gefunden — bitte <code>brew install whisper-cpp</code> ausführen.
       </div>
     </div>
-    <div class="hint"><a href="#" data-url="https://console.groq.com/keys">console.groq.com/keys</a> — kostenlos</div>
   </div>
 
   <div class="section">
@@ -239,32 +266,131 @@
   <script>
     const api = window.jarvisSettings;
 
+    // Cache fürs Modell-Statusrendering
+    let MODELS_INFO = {};
+    let WHISPER_BINARY = null;
+
     // Felder laden
     api.load().then((s) => {
-      document.getElementById('aiProvider').value   = s.aiProvider    || 'anthropic';
-      document.getElementById('anthropicKey').value = s.anthropicKey  || '';
-      document.getElementById('openaiKey').value    = s.openaiKey     || '';
-      document.getElementById('groqKey').value      = s.groqKey       || '';
-      document.getElementById('hotkey').value       = s.hotkey        || 'cmd+alt';
+      document.getElementById('aiProvider').value    = s.aiProvider    || 'anthropic';
+      document.getElementById('anthropicKey').value  = s.anthropicKey  || '';
+      document.getElementById('openaiKey').value     = s.openaiKey     || '';
+      document.getElementById('groqKey').value       = s.groqKey       || '';
+      document.getElementById('hotkey').value        = s.hotkey        || 'cmd+alt';
+      document.getElementById('sttMode').value       = s.sttMode       || 'cloud';
+      document.getElementById('sttLocalModel').value = s.sttLocalModel || 'base';
+
+      MODELS_INFO    = s.models || {};
+      WHISPER_BINARY = s.whisperBinary;
+
+      applySttMode();
+      refitWindow();
     });
 
-    // Inhalt vermessen → Hauptprozess passt das Fenster automatisch an.
-    // Wir warten auf den ersten Paint, damit Font-Metriken und Boxhöhen
-    // korrekt sind.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const h = Math.ceil(document.body.getBoundingClientRect().height);
-        api.fitWindow(h);
-      });
+    function applySttMode() {
+      const mode = document.getElementById('sttMode').value;
+      document.getElementById('cloudBlock').style.display = mode === 'cloud' ? '' : 'none';
+      document.getElementById('localBlock').style.display = mode === 'local' ? '' : 'none';
+      if (mode === 'local') updateModelStatus();
+      refitWindow();
+    }
+
+    async function updateModelStatus() {
+      const model = document.getElementById('sttLocalModel').value;
+      const info = MODELS_INFO[model] || { sizeMb: '?' };
+      const statusEl = document.getElementById('modelStatus');
+      const btn      = document.getElementById('btnDownload');
+      const binHint  = document.getElementById('binaryHint');
+
+      binHint.style.display = WHISPER_BINARY ? 'none' : '';
+
+      // Zwischenzustand während Remote-Check (HEAD zu HuggingFace)
+      statusEl.textContent = 'prüfe …';
+      statusEl.style.color = 'rgba(255,255,255,0.55)';
+      btn.style.display = 'none';
+
+      const status = await api.modelStatus(model);
+
+      // Falls der User in der Zwischenzeit das Modell gewechselt hat, verwerfen
+      if (model !== document.getElementById('sttLocalModel').value) return;
+
+      switch (status.state) {
+        case 'current':
+          statusEl.innerHTML = `<span style="color:#4ade80">✓</span> aktuell (~${info.sizeMb} MB)`;
+          statusEl.style.color = 'rgba(255,255,255,0.7)';
+          btn.style.display = 'none';
+          break;
+        case 'update-available':
+          statusEl.innerHTML = `<span style="color:#fbbf24">↻</span> Update verfügbar`;
+          statusEl.style.color = 'rgba(255,255,255,0.7)';
+          btn.textContent = 'Aktualisieren';
+          btn.disabled = false;
+          btn.style.display = '';
+          break;
+        case 'missing':
+          statusEl.textContent = `nicht heruntergeladen (~${info.sizeMb} MB)`;
+          statusEl.style.color = 'rgba(255,255,255,0.55)';
+          btn.textContent = 'Herunterladen';
+          btn.disabled = false;
+          btn.style.display = '';
+          break;
+        case 'unknown':
+          statusEl.innerHTML = `<span style="color:#4ade80">✓</span> vorhanden (~${info.sizeMb} MB)`;
+          statusEl.style.color = 'rgba(255,255,255,0.7)';
+          btn.style.display = 'none';
+          break;
+      }
+      refitWindow();
+    }
+
+    document.getElementById('sttMode').addEventListener('change', applySttMode);
+    document.getElementById('sttLocalModel').addEventListener('change', updateModelStatus);
+
+    // Download-Fortschritt vom Main empfangen
+    api.onModelProgress(({ model, received, total }) => {
+      const currentModel = document.getElementById('sttLocalModel').value;
+      if (model !== currentModel) return;
+      const btn = document.getElementById('btnDownload');
+      const pct = total ? Math.floor((received / total) * 100) : 0;
+      btn.textContent = `${pct}%`;
+      btn.disabled = true;
     });
+
+    document.getElementById('btnDownload').addEventListener('click', async () => {
+      const model = document.getElementById('sttLocalModel').value;
+      const btn = document.getElementById('btnDownload');
+      btn.disabled = true;
+      btn.textContent = '0%';
+      const result = await api.downloadModel(model);
+      if (result.ok) {
+        // Frischer Status-Check (lädt aus Sidecar + HEAD-Vergleich)
+        updateModelStatus();
+      } else {
+        document.getElementById('modelStatus').textContent = `Fehler: ${result.error}`;
+        document.getElementById('modelStatus').style.color = '#f87171';
+        btn.disabled = false;
+        btn.textContent = 'Erneut versuchen';
+      }
+    });
+
+    function refitWindow() {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const h = Math.ceil(document.body.getBoundingClientRect().height);
+          api.fitWindow(h);
+        });
+      });
+    }
 
     document.getElementById('btnSave').addEventListener('click', async () => {
       await api.save({
-        aiProvider:   document.getElementById('aiProvider').value,
-        anthropicKey: document.getElementById('anthropicKey').value.trim(),
-        openaiKey:    document.getElementById('openaiKey').value.trim(),
-        groqKey:      document.getElementById('groqKey').value.trim(),
-        hotkey:       document.getElementById('hotkey').value,
+        aiProvider:    document.getElementById('aiProvider').value,
+        anthropicKey:  document.getElementById('anthropicKey').value.trim(),
+        openaiKey:     document.getElementById('openaiKey').value.trim(),
+        groqKey:       document.getElementById('groqKey').value.trim(),
+        hotkey:        document.getElementById('hotkey').value,
+        sttMode:       document.getElementById('sttMode').value,
+        sttLocalModel: document.getElementById('sttLocalModel').value,
       });
       api.close();
     });

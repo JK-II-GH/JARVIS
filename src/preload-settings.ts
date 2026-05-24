@@ -7,4 +7,12 @@ contextBridge.exposeInMainWorld("jarvisSettings", {
   openExternal: (url: string) => shell.openExternal(url),
   fitWindow: (contentHeight: number) =>
     ipcRenderer.send("jarvis:settings-fit", contentHeight),
+
+  // Lokale STT
+  modelStatus: (model: string) =>
+    ipcRenderer.invoke("jarvis:stt-model-status", model),
+  downloadModel: (model: string) =>
+    ipcRenderer.invoke("jarvis:stt-model-download", model),
+  onModelProgress: (cb: (data: { model: string; received: number; total: number }) => void) =>
+    ipcRenderer.on("jarvis:stt-model-progress", (_, data) => cb(data)),
 });

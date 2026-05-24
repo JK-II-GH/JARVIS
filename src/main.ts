@@ -5,6 +5,16 @@ import { createPlatformAdapter } from "./platform/index";
 import type { PlatformAdapter, HotkeyHandlers } from "./platform/index";
 import { SettingsManager } from "./core/settings";
 import { WhisperProvider } from "./core/stt/WhisperProvider";
+import { LocalWhisperProvider } from "./core/stt/LocalWhisperProvider";
+import {
+  MODELS as LOCAL_MODELS,
+  findWhisperBinary,
+  modelExists,
+  getModelPath,
+  downloadModel,
+  checkModelStatus,
+} from "./core/stt/localWhisper";
+import type { STTProvider } from "./core/stt/STTProvider";
 import { AnthropicProvider } from "./core/ai/AnthropicProvider";
 import { OpenAIProvider } from "./core/ai/OpenAIProvider";
 import type { AIProvider } from "./core/ai/AIProvider";
@@ -143,6 +153,32 @@ function getAiProvider(): AIProvider | null {
   return cfg.provider === "openai"
     ? new OpenAIProvider(cfg.apiKey)
     : new AnthropicProvider(cfg.apiKey);
+}
+
+/**
+ * Wählt den passenden STT-Provider anhand der Einstellung. Fällt bei
+ * Problemen mit "Lokal" automatisch auf Cloud zurück, wenn ein
+ * Cloud-Key da ist. Gibt null zurück, wenn nichts verfügbar ist.
+ */
+function pickSttProvider(): STTProvider | null {
+  if (settings.getSttMode() === "local") {
+    const binary = findWhisperBinary();
+    const model  = settings.getLocalSttModel();
+    if (binary && modelExists(model)) {
+      console.log(`JARVIS: STT lokal (Modell ${model})`);
+      return new LocalWhisperProvider(binary, getModelPath(model));
+    }
+    console.warn(
+      `JARVIS: Lokale STT nicht einsatzbereit (Binary: ${binary ? "ok" : "fehlt"}, ` +
+      `Modell ${model}: ${modelExists(model) ? "ok" : "fehlt"}) → Cloud-Fallback`,
+    );
+  }
+  const cfg = settings.getSttConfig();
+  if (!cfg) {
+    console.error("JARVIS: Kein STT-Provider verfügbar (weder lokal noch Cloud).");
+    return null;
+  }
+  return new WhisperProvider(cfg);
 }
 
 function sendStatus(status: "bereit" | "aufnahme" | "verarbeitet" | "spricht", modus = "Diktat"): void {
@@ -286,13 +322,40 @@ async function initialize(): Promise<void> {
   // Settings laden / speichern
   ipcMain.handle("jarvis:settings-load", () => {
     const keys = settings.getRawKeys();
+    const localModel = settings.getLocalSttModel();
     return {
       aiProvider:   settings.getAiProvider(),
       anthropicKey: keys.anthropicApiKey,
       openaiKey:    keys.openaiApiKey,
       groqKey:      keys.groqApiKey,
       hotkey:       settings.getHotkey(),
+      sttMode:      settings.getSttMode(),
+      sttLocalModel: localModel,
+      whisperBinary: findWhisperBinary(),
+      models: Object.fromEntries(
+        (Object.keys(LOCAL_MODELS) as (keyof typeof LOCAL_MODELS)[]).map((k) => [
+          k,
+          { ...LOCAL_MODELS[k], present: modelExists(k) },
+        ]),
+      ),
     };
+  });
+
+  // Status eines einzelnen Modells inkl. Update-Check (HEAD-Request zu HF)
+  ipcMain.handle("jarvis:stt-model-status", async (_, model) => {
+    return await checkModelStatus(model);
+  });
+
+  // Download eines Modells anstoßen — Fortschritt geht per Event zurück
+  ipcMain.handle("jarvis:stt-model-download", async (event, model) => {
+    try {
+      await downloadModel(model, (received, total) => {
+        event.sender.send("jarvis:stt-model-progress", { model, received, total });
+      });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: String(err instanceof Error ? err.message : err) };
+    }
   });
 
   ipcMain.handle("jarvis:settings-save", async (_, data: Record<string, string>) => {
@@ -303,9 +366,11 @@ async function initialize(): Promise<void> {
     if (data.groqKey)      raw.groqApiKey      = data.groqKey;      else delete raw.groqApiKey;
     raw.aiProvider = data.aiProvider || "anthropic";
     if (data.hotkey) raw.hotkey = data.hotkey;
+    if (data.sttMode === "local" || data.sttMode === "cloud") raw.sttMode = data.sttMode;
+    if (data.sttLocalModel) raw.sttLocalModel = data.sttLocalModel;
     fs.writeFileSync(settings.settingsFilePath, JSON.stringify(raw, null, 2));
     settings = new SettingsManager();
-    console.log(`JARVIS: Einstellungen gespeichert, Anbieter="${raw.aiProvider}", Hotkey="${raw.hotkey ?? "default"}"`);
+    console.log(`JARVIS: Einstellungen gespeichert, STT="${raw.sttMode ?? "cloud"}", Anbieter="${raw.aiProvider}", Hotkey="${raw.hotkey ?? "default"}"`);
 
     // Hotkey live neu registrieren, falls sich die Kombi geändert hat
     const newHotkey = settings.getHotkey();
@@ -364,16 +429,16 @@ async function initialize(): Promise<void> {
   ipcMain.on("jarvis:audio-data", async (_, data: ArrayBuffer, mimeType: string) => {
     const modusLabel = currentMode === "edit" ? "Bearbeiten" : "Diktat";
     try {
-      const sttConfig = settings.getSttConfig();
-      if (!sttConfig) {
-        console.error("JARVIS: Kein STT-Schlüssel konfiguriert.");
+      const stt = pickSttProvider();
+      if (!stt) {
         sendStatus("bereit", modusLabel);
         return;
       }
 
-      // Transkription und Text-Lesen parallel — STT dauert ~1-2 s, mehr als genug Zeit
+      // Transkription und Text-Lesen parallel — Cloud-STT dauert ~1-2 s,
+      // mehr als genug Zeit. Lokal dauert etwas länger; läuft aber genauso async.
       const [transcript, selectedText] = await Promise.all([
-        new WhisperProvider(sttConfig).transcribe(Buffer.from(data), mimeType),
+        stt.transcribe(Buffer.from(data), mimeType),
         pendingSelectedText ?? Promise.resolve(""),
       ]);
       pendingSelectedText = null;
