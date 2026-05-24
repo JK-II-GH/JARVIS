@@ -86,7 +86,8 @@ git commit -m "Release $TAG"
 git tag "$TAG"
 
 echo "▶ Push zu origin (inkl. Tag) …"
-git push --follow-tags
+git push
+git push origin "$TAG"
 
 ASSETS=(
   "release/JARVIS-${VERSION}-arm64.dmg"
