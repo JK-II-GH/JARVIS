@@ -66,6 +66,9 @@ echo "  Neue Version: $VERSION (Tag: $TAG)"
 echo "▶ TypeScript kompilieren …"
 npm run build
 
+echo "▶ whisper.cpp aktualisieren + bauen …"
+bash scripts/build-whisper.sh
+
 echo "▶ DMGs bauen (arm64 + x64) …"
 rm -rf release
 npx electron-builder --mac

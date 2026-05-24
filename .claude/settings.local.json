@@ -53,7 +53,8 @@
       "Bash(git --version)",
       "Bash(chmod +x scripts/build-whisper.sh)",
       "Bash(bash scripts/build-whisper.sh)",
-      "Bash(./build/whisper-bin/whisper-cli --help)"
+      "Bash(./build/whisper-bin/whisper-cli --help)",
+      "Bash(xargs grep -l -E \"\\(sk-[a-zA-Z0-9-]{20,}|gsk_[a-zA-Z0-9]{20,}|sk-ant-[a-zA-Z0-9-]{20,}|sk-proj-[a-zA-Z0-9]{20,}\\)\")"
     ]
   }
 }
