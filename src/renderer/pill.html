@@ -177,8 +177,10 @@
     const statusText  = document.getElementById('statusText');
     const modusBadge  = document.getElementById('modusBadge');
 
-    const MODI = ['Diktat', 'Bearbeiten', 'Gespräch', 'Datei'];
-    const MODI_VALUES = ['dictation', 'edit', 'conversation', 'file'];
+    // Mode-IDs + Labels kommen jetzt aus dem Preload (Single-Source-of-Truth
+    // mit src/platform/index.ts), damit eine Änderung dort sofort durchschlägt.
+    const MODI_VALUES = window.jarvis.modes;
+    const MODI        = MODI_VALUES.map(m => window.jarvis.modeLabels[m]);
     let modusIndex = 0;
     let aufnahmeAktiv = false;
 

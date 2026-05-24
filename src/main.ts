@@ -1,8 +1,8 @@
 import { app, BrowserWindow, Tray, Menu, nativeImage, screen, ipcMain, dialog, globalShortcut, systemPreferences, shell } from "electron";
 import * as path from "path";
 import * as fs from "fs";
-import { createPlatformAdapter } from "./platform/index";
-import type { PlatformAdapter, HotkeyHandlers } from "./platform/index";
+import { createPlatformAdapter, APP_MODES, APP_MODE_LABELS } from "./platform/index";
+import type { PlatformAdapter, HotkeyHandlers, AppMode, HotkeyCombo } from "./platform/index";
 import { SettingsManager } from "./core/settings";
 import { WhisperProvider } from "./core/stt/WhisperProvider";
 import { LocalWhisperProvider } from "./core/stt/LocalWhisperProvider";
@@ -32,7 +32,6 @@ let settings: SettingsManager;
 let hotkeyHandlers: HotkeyHandlers | null = null;
 
 // Zustand des aktuellen Vorgangs
-type AppMode = "dictation" | "edit" | "conversation" | "file";
 let currentMode: AppMode = "dictation";
 // Im Bearbeiten-Modus: Promise das beim Loslassen des Hotkeys gestartet wird
 let pendingSelectedText: Promise<string> | null = null;
@@ -43,10 +42,9 @@ let speaking = false;
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB
 
-const MODES: AppMode[] = ["dictation", "edit", "conversation", "file"];
-const MODE_LABELS: Record<string, string> = {
-  dictation: "Diktat", edit: "Bearbeiten", conversation: "Gespräch", file: "Datei",
-};
+// Re-Export für die zahlreichen In-Datei-Aufrufer
+const MODES = APP_MODES;
+const MODE_LABELS = APP_MODE_LABELS;
 
 function getFeedbackPath(): string {
   return path.join(app.getPath("userData"), "feedback.md");
@@ -106,8 +104,14 @@ function openSettingsWindow(): void {
 // Renderer meldet die gewünschte Inhaltshöhe — Fenster wird passend
 // gesetzt und sichtbar gemacht. Damit wächst es bei neuen Settings-
 // Sektionen automatisch mit, ohne dass wir die Höhe hier pflegen müssen.
-ipcMain.on("jarvis:settings-fit", (_, contentHeight: number) => {
+ipcMain.on("jarvis:settings-fit", (_, contentHeight: unknown) => {
   if (!settingsWindow) return;
+  // Validieren: bei NaN/Infinity/falschem Typ vom Renderer NICHT setContentSize
+  // aufrufen — sonst wird das Fenster nie sichtbar und die App wirkt tot
+  if (typeof contentHeight !== "number" || !Number.isFinite(contentHeight)) {
+    console.warn(`JARVIS: settings-fit mit ungültigem Wert ignoriert (${contentHeight})`);
+    return;
+  }
   const [w] = settingsWindow.getContentSize();
   const clamped = Math.min(900, Math.max(200, Math.round(contentHeight)));
   settingsWindow.setContentSize(w, clamped);
@@ -157,12 +161,38 @@ function rebuildTrayMenu(): void {
   tray.setContextMenu(menu);
 }
 
+// ── Provider-Cache ────────────────────────────────────────────────────────
+// Anthropic-/OpenAI-Clients halten interne HTTP-Connection-Pools; wir
+// instanziieren sie nur einmal pro Konfigurations-Set und invalidieren
+// nach jedem Settings-Save.
+interface ProviderCache {
+  aiKey: string | null;
+  aiProvider: AIProvider | null;
+  sttKey: string | null;
+  sttProvider: STTProvider | null;
+}
+const providerCache: ProviderCache = {
+  aiKey: null, aiProvider: null, sttKey: null, sttProvider: null,
+};
+
+function invalidateProviderCache(): void {
+  providerCache.aiKey = null;
+  providerCache.aiProvider = null;
+  providerCache.sttKey = null;
+  providerCache.sttProvider = null;
+}
+
 function getAiProvider(): AIProvider | null {
   const cfg = settings.getAiConfig();
   if (!cfg) return null;
-  return cfg.provider === "openai"
-    ? new OpenAIProvider(cfg.apiKey)
-    : new AnthropicProvider(cfg.apiKey);
+  const key = `${cfg.provider}:${cfg.apiKey}`;
+  if (providerCache.aiKey !== key || !providerCache.aiProvider) {
+    providerCache.aiProvider = cfg.provider === "openai"
+      ? new OpenAIProvider(cfg.apiKey)
+      : new AnthropicProvider(cfg.apiKey);
+    providerCache.aiKey = key;
+  }
+  return providerCache.aiProvider;
 }
 
 /**
@@ -171,12 +201,18 @@ function getAiProvider(): AIProvider | null {
  * Cloud-Key da ist. Gibt null zurück, wenn nichts verfügbar ist.
  */
 function pickSttProvider(): STTProvider | null {
-  if (settings.getSttMode() === "local") {
+  const mode = settings.getSttMode();
+  if (mode === "local") {
     const binary = findWhisperBinary();
     const model  = settings.getLocalSttModel();
     if (binary && modelExists(model)) {
-      console.log(`JARVIS: STT lokal (Modell ${model})`);
-      return new LocalWhisperProvider(binary, getModelPath(model));
+      const key = `local:${binary}:${model}`;
+      if (providerCache.sttKey !== key) {
+        providerCache.sttProvider = new LocalWhisperProvider(binary, getModelPath(model));
+        providerCache.sttKey = key;
+        console.log(`JARVIS: STT lokal (Modell ${model})`);
+      }
+      return providerCache.sttProvider;
     }
     console.warn(
       `JARVIS: Lokale STT nicht einsatzbereit (Binary: ${binary ? "ok" : "fehlt"}, ` +
@@ -188,7 +224,12 @@ function pickSttProvider(): STTProvider | null {
     console.error("JARVIS: Kein STT-Provider verfügbar (weder lokal noch Cloud).");
     return null;
   }
-  return new WhisperProvider(cfg);
+  const key = `cloud:${cfg.apiKey}:${cfg.model}`;
+  if (providerCache.sttKey !== key) {
+    providerCache.sttProvider = new WhisperProvider(cfg);
+    providerCache.sttKey = key;
+  }
+  return providerCache.sttProvider;
 }
 
 function sendStatus(
@@ -201,10 +242,14 @@ function sendStatus(
 function startSpeaking(text: string): void {
   speaking = true;
   sendStatus("spricht", MODE_LABELS[currentMode]);
+  // Doppel-Registrierung von Escape vermeiden — uIOhook wäre langfristig
+  // sauberer (siehe Batch 7), aktuell reicht das defensive Unregister davor.
+  globalShortcut.unregister("Escape");
   globalShortcut.register("Escape", stopSpeaking);
-  platform.speak(text).then(() => {
-    if (speaking) stopSpeaking();
-  });
+
+  platform.speak(text)
+    .catch((err) => console.error("JARVIS: TTS-Fehler:", err))
+    .finally(() => { if (speaking) stopSpeaking(); });
 }
 
 function stopSpeaking(): void {
@@ -322,6 +367,17 @@ async function initialize(): Promise<void> {
     });
   }
 
+  // Sicherheitsguard: alle .handle-Channels vor neuer Registrierung räumen,
+  // damit ein versehentlicher Zweit-Aufruf von initialize() nicht crasht
+  const channelsToReset = [
+    "jarvis:settings-load",
+    "jarvis:settings-save",
+    "jarvis:stt-model-status",
+    "jarvis:stt-model-download",
+    "jarvis:feedback-save",
+  ];
+  for (const ch of channelsToReset) ipcMain.removeHandler(ch);
+
   // Modus-Wechsel vom Renderer (Klick auf Modus-Badge)
   ipcMain.on("jarvis:set-mode", (_, mode: string) => {
     currentMode = mode as typeof currentMode;
@@ -373,17 +429,19 @@ async function initialize(): Promise<void> {
 
   ipcMain.handle("jarvis:settings-save", async (_, data: Record<string, string>) => {
     const previousHotkey = settings.getHotkey();
-    const raw = JSON.parse(fs.readFileSync(settings.settingsFilePath, "utf-8") || "{}");
-    if (data.anthropicKey) raw.anthropicApiKey = data.anthropicKey; else delete raw.anthropicApiKey;
-    if (data.openaiKey)    raw.openaiApiKey    = data.openaiKey;    else delete raw.openaiApiKey;
-    if (data.groqKey)      raw.groqApiKey      = data.groqKey;      else delete raw.groqApiKey;
-    raw.aiProvider = data.aiProvider || "anthropic";
-    if (data.hotkey) raw.hotkey = data.hotkey;
-    if (data.sttMode === "local" || data.sttMode === "cloud") raw.sttMode = data.sttMode;
-    if (data.sttLocalModel) raw.sttLocalModel = data.sttLocalModel;
-    fs.writeFileSync(settings.settingsFilePath, JSON.stringify(raw, null, 2));
-    settings = new SettingsManager();
-    console.log(`JARVIS: Einstellungen gespeichert, STT="${raw.sttMode ?? "cloud"}", Anbieter="${raw.aiProvider}", Hotkey="${raw.hotkey ?? "default"}"`);
+    // Statt rohem JSON.parse → SettingsManager.update() respektiert die
+    // in-memory data und übersteht kaputte Dateien stillschweigend.
+    settings.update({
+      anthropicApiKey: data.anthropicKey ?? "",
+      openaiApiKey:    data.openaiKey    ?? "",
+      groqApiKey:      data.groqKey      ?? "",
+      aiProvider:      (data.aiProvider === "openai" ? "openai" : "anthropic"),
+      hotkey:          data.hotkey as HotkeyCombo | undefined,
+      sttMode:         (data.sttMode === "local" || data.sttMode === "cloud") ? data.sttMode : undefined,
+      sttLocalModel:   (data.sttLocalModel as "tiny" | "base" | "small" | undefined),
+    });
+    invalidateProviderCache();
+    console.log(`JARVIS: Einstellungen gespeichert, STT="${settings.getSttMode()}", Anbieter="${settings.getAiProvider()}", Hotkey="${settings.getHotkey()}"`);
 
     // Hotkey live neu registrieren, falls sich die Kombi geändert hat
     const newHotkey = settings.getHotkey();

@@ -116,13 +116,31 @@ export async function checkModelStatus(model: LocalSttModel): Promise<ModelStatu
 }
 
 /**
+ * Cache für die Binary-Suche. `spawnSync("which")` blockiert den Main-
+ * Prozess für 10–50 ms, also nur einmal pro App-Lauf machen.
+ */
+let cachedBinary: string | null | undefined;
+
+/** Cache invalidieren — wird z.B. nach Tool-Installation während der Laufzeit aufgerufen. */
+export function invalidateWhisperBinaryCache(): void {
+  cachedBinary = undefined;
+}
+
+/**
  * Sucht das whisper-cli-Binary. Reihenfolge:
  *   1. Mitgeliefertes Binary im App-Bundle (gepackt) oder build/whisper-bin (Dev)
  *   2. Standard-Brew-Pfade (Fallback für Dev-Maschinen ohne eigenen Build)
  *   3. PATH-Suche via `which`
  * Gibt den absoluten Pfad zurück oder null wenn nichts gefunden wurde.
+ * Ergebnis wird gecacht — siehe `invalidateWhisperBinaryCache`.
  */
 export function findWhisperBinary(): string | null {
+  if (cachedBinary !== undefined) return cachedBinary;
+  cachedBinary = doFindWhisperBinary();
+  return cachedBinary;
+}
+
+function doFindWhisperBinary(): string | null {
   const candidates: string[] = [];
 
   // 1) Gepacktes App-Bundle: Contents/Resources/bin/whisper-cli

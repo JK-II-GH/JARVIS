@@ -12,13 +12,25 @@
  *   - src/platform/windows  (spaeter)
  */
 
-/** Aktueller Bedienmodus der App. */
-export type Mode =
-  | "dictation"
-  | "edit"
-  | "conversation"
-  | "fileContext"
-  | "feedback";
+/**
+ * Aktueller Bedienmodus der App. Single source of truth — wird in main.ts
+ * UND aus pill.html über das Preload importiert, damit Werte und Reihenfolge
+ * konsistent bleiben.
+ */
+export type AppMode = "dictation" | "edit" | "conversation" | "file";
+
+/** Reihenfolge für Doppeltipp-Cycle + Tray-Menü + Pillen-Badge. */
+export const APP_MODES: readonly AppMode[] = [
+  "dictation", "edit", "conversation", "file",
+] as const;
+
+/** Anzeigetexte (Deutsch) für UI und Tray. */
+export const APP_MODE_LABELS: Readonly<Record<AppMode, string>> = {
+  dictation: "Diktat",
+  edit:      "Bearbeiten",
+  conversation: "Gespräch",
+  file:      "Datei",
+};
 
 /** Status der vom Nutzer zu erteilenden Systemberechtigungen. */
 export interface PermissionStatus {

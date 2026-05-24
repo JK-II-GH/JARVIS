@@ -114,6 +114,21 @@ export class SettingsManager {
     return m === "tiny" || m === "small" ? m : "base";
   }
 
+  /**
+   * Schreibt die übergebenen Felder atomar in die Settings-Datei. Felder die
+   * im Input fehlen, bleiben unverändert; leere Strings löschen den Eintrag.
+   */
+  update(patch: Partial<SettingsData>): void {
+    for (const [k, v] of Object.entries(patch) as [keyof SettingsData, unknown][]) {
+      if (v === "" || v === undefined || v === null) {
+        delete this.data[k];
+      } else {
+        (this.data as Record<string, unknown>)[k] = v;
+      }
+    }
+    this.save();
+  }
+
   private load(): SettingsData {
     try {
       return JSON.parse(fs.readFileSync(this.filePath, "utf-8"));

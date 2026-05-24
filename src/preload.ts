@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer, desktopCapturer } from "electron";
+import { APP_MODES, APP_MODE_LABELS } from "./platform/index";
 
 contextBridge.exposeInMainWorld("jarvis", {
+  // Konstanten — geben dem Renderer Single-Source-of-Truth-Zugriff
+  // auf Mode-IDs und -Labels (sonst müsste man sie an zwei Stellen pflegen).
+  modes: [...APP_MODES],
+  modeLabels: { ...APP_MODE_LABELS },
   // Renderer → Main
   sendAudioData: (data: ArrayBuffer, mimeType: string) =>
     ipcRenderer.send("jarvis:audio-data", data, mimeType),
