@@ -40,7 +40,7 @@ let currentMode: AppMode = "dictation";
 let pendingMode: AppMode | null = null;
 // Im Bearbeiten-Modus: Promise das beim Loslassen des Hotkeys gestartet wird
 let pendingSelectedText: Promise<string> | null = null;
-// Im Datei-Modus: Promise auf den Kontext (Datei, Screenshot oder Artikel)
+// Im Inhalt-Modus: Promise auf den Kontext (Datei, Screenshot oder Artikel)
 let pendingSelectedFile: Promise<FileContext | null> | null = null;
 // TTS läuft gerade
 let speaking = false;
@@ -59,7 +59,7 @@ const ARTICLE_CHAR_PROMPT_THRESHOLD = 50_000;
 const CHARS_PER_TOKEN = 4;
 
 /**
- * Verarbeitet einen Artikel-Kontext im Datei-Modus. Zeigt bei großen Texten
+ * Verarbeitet einen Artikel-Kontext im Inhalt-Modus. Zeigt bei großen Texten
  * Sicherheits-Dialoge, baut den kombinierten Prompt und ruft ai.chat() auf.
  * Gibt true zurück wenn die KI-Antwort gestartet wurde, false bei Abbruch
  * oder Konfigurationsfehler.
@@ -660,14 +660,14 @@ async function setupHotkey(): Promise<void> {
             return text;
           })
           .catch(() => "");
-      } else if (currentMode === "file") {
+      } else if (currentMode === "content") {
         pendingSelectedFile = platform.resolveFileContext()
           .then((ctx) => {
-            if (!ctx) { console.log("JARVIS: Datei-Kontext = keiner"); return null; }
+            if (!ctx) { console.log("JARVIS: Inhalt-Kontext = keiner"); return null; }
             if (ctx.kind === "article")
-              console.log(`JARVIS: Datei-Kontext = Artikel "${ctx.title.slice(0, 60)}" (${ctx.text.length} Zeichen)`);
+              console.log(`JARVIS: Inhalt-Kontext = Artikel "${ctx.title.slice(0, 60)}" (${ctx.text.length} Zeichen)`);
             else
-              console.log(`JARVIS: Datei-Kontext = Datei "${ctx.path}"`);
+              console.log(`JARVIS: Inhalt-Kontext = Datei "${ctx.path}"`);
             return ctx;
           })
           .catch(() => null);
@@ -747,12 +747,12 @@ function bindAudioIPC(): void {
         }
         const result = await ai.process(selectedText, transcript);
         if (result) await platform.insertText(result);
-      } else if (mode === "file") {
+      } else if (mode === "content") {
         const ctx = await (pendingSelectedFile ?? Promise.resolve(null));
         pendingSelectedFile = null;
         if (!ctx) {
-          console.error("JARVIS: Datei-Kontext: weder Finder-Auswahl noch Screenshot verfügbar.");
-          startSpeaking("Kein Datei-Kontext gefunden. Bitte eine Datei im Finder markieren.");
+          console.error("JARVIS: Inhalt-Kontext: weder Finder-Auswahl noch Screenshot verfügbar.");
+          startSpeaking("Kein Inhalt gefunden. Bitte eine Datei im Finder markieren oder Safari öffnen.");
           return;
         }
 
@@ -773,7 +773,7 @@ function bindAudioIPC(): void {
         }
         const ai = getAiProvider();
         if (!ai) {
-          console.error("JARVIS: Kein KI-Schlüssel für Datei-Kontext-Modus.");
+          console.error("JARVIS: Kein KI-Schlüssel für Inhalt-Modus.");
           sendStatus("bereit", modusLabel);
           return;
         }

@@ -17,19 +17,19 @@
  * UND aus pill.html über das Preload importiert, damit Werte und Reihenfolge
  * konsistent bleiben.
  */
-export type AppMode = "dictation" | "edit" | "conversation" | "file";
+export type AppMode = "dictation" | "edit" | "conversation" | "content";
 
 /** Reihenfolge für Doppeltipp-Cycle + Tray-Menü + Pillen-Badge. */
 export const APP_MODES: readonly AppMode[] = [
-  "dictation", "edit", "conversation", "file",
+  "dictation", "edit", "conversation", "content",
 ] as const;
 
 /** Anzeigetexte (Deutsch) für UI und Tray. */
 export const APP_MODE_LABELS: Readonly<Record<AppMode, string>> = {
-  dictation: "Diktat",
-  edit:      "Bearbeiten",
+  dictation:    "Diktat",
+  edit:         "Bearbeiten",
   conversation: "Gespräch",
-  file:      "Datei",
+  content:      "Inhalt",
 };
 
 /** Status der vom Nutzer zu erteilenden Systemberechtigungen. */

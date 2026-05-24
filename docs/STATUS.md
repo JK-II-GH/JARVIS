@@ -37,12 +37,12 @@
 - [x] Moduswechsel per Doppeltipp
 - [x] Escape bricht Vorlesen oder laufende Aktion ab
 
-## Phase 4 — Mehrere Anbieter, Einstellungen, Datei-Kontext
+## Phase 4 — Mehrere Anbieter, Einstellungen, Inhalt-Kontext
 
 - [x] OpenAI-Implementierung des `AIProvider` (GPT-4o, process + chat)
 - [x] Einstellungsfenster: Anbieterauswahl (Anthropic/OpenAI), API-Schlüssel, ⚙-Button in Pille
 - [x] Einstellungen im App-Datenverzeichnis speichern (`~/Library/Application Support/jarvis/settings.json`)
-- [x] Datei-Kontext: PDF/Bild auswählen und in den KI-Aufruf laden (max. 20 MB, Anthropic: Bilder+PDF, OpenAI: nur Bilder)
+- [x] Inhalt-Kontext: PDF/Bild auswählen und in den KI-Aufruf laden (max. 20 MB, Anthropic: Bilder+PDF, OpenAI: nur Bilder)
 
 ## Phase 5 — Verteilung
 

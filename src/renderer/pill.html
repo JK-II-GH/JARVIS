@@ -135,7 +135,7 @@
       color: rgba(253, 186, 116, 0.95);
     }
 
-    .modus-badge.datei {
+    .modus-badge.inhalt {
       background: rgba(52, 211, 153, 0.2);
       color: rgba(110, 231, 183, 0.9);
     }
@@ -191,7 +191,7 @@
       modusBadge.textContent = MODI[modusIndex];
       modusBadge.classList.toggle('aktiv',     modusIndex === 1);
       modusBadge.classList.toggle('gespraech', modusIndex === 2);
-      modusBadge.classList.toggle('datei',     modusIndex === 3);
+      modusBadge.classList.toggle('inhalt',    modusIndex === 3);
       // Nicht zurückspiegeln, wenn der Wechsel vom Main kam — sonst
       // pingt das Mode-Update zwischen Main und Renderer hin und her
       if (!fromMain) window.jarvis.setMode(MODI_VALUES[modusIndex]);
@@ -303,9 +303,9 @@
       const myGen = ++recordingGeneration;
       recordingActive = true;
 
-      // Im Datei-Modus Fensterquellen aus dem Renderer-Kontext holen
+      // Im Inhalt-Modus Fensterquellen aus dem Renderer-Kontext holen
       // (ScreenCaptureKit-Berechtigung wird hier korrekt ausgelöst)
-      if (MODI_VALUES[modusIndex] === 'file') {
+      if (MODI_VALUES[modusIndex] === 'content') {
         try {
           const sources = await window.jarvis.getWindowSources();
           window.jarvis.sendWindowSources(sources);

@@ -30,8 +30,9 @@ unauffälliger? Wenn nein — weglassen.
   und ersetzt (z. B. „kürze das", „korrigiere die Rechtschreibung", „übersetze
   ins Englische").
 - **Gespräch** — freie Unterhaltung mit der KI, die Antwort wird vorgelesen (TTS).
-- **Datei-Kontext** — PDF, Screenshot oder Bild wird in den KI-Aufruf geladen,
-  danach folgt die Frage.
+- **Inhalt** — Kontext aus dem Vordergrund laden und die Frage darauf
+  anwenden: PDF/Bild aus dem Finder, Screenshot des aktiven Fensters,
+  oder bei Safari der extrahierte Artikel-Text der Webseite.
 - **Feedback** *(optional, später)* — Nutzer kann Feature-Wünsche einsprechen.
 
 ## 4. Architektur — vier Schichten
@@ -39,7 +40,7 @@ unauffälliger? Wenn nein — weglassen.
 1. **Oberfläche** (`src/renderer`) — die Pille und das Einstellungsfenster.
    Zeigt nur an, nimmt Klicks entgegen. Enthält keine Logik.
 2. **Kernlogik** (`src/core`) — Modus-Manager, KI-Orchestrierung, STT/TTS-Dienste,
-   Datei-Kontext, Einstellungen. Vollständig plattformunabhängig.
+   Inhalt-Kontext, Einstellungen. Vollständig plattformunabhängig.
 3. **Platform-Adapter** (`src/platform/index.ts`) — eine gemeinsame Schnittstelle
    für alles, was sich zwischen Betriebssystemen unterscheidet.
 4. **Platform-Implementierung** (`src/platform/macos`, später `.../windows`) —
@@ -65,7 +66,7 @@ Windows später dazu, ohne dass an Schicht 1–3 eine Zeile geändert wird.
   Implementierungen für Anthropic und OpenAI; Auswahl in den Einstellungen.
 - **TTS** — Start mit der System-Sprachausgabe; Cloud-TTS optional später.
 - **MVP-Umfang** — voll: Diktat, Text bearbeiten, Gespräch mit Vorlesen,
-  Datei-Kontext. Wird trotzdem phasenweise gebaut (siehe `docs/STATUS.md`).
+  Inhalt-Kontext. Wird trotzdem phasenweise gebaut (siehe `docs/STATUS.md`).
 
 ## 6. macOS-Besonderheiten
 
