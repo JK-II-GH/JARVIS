@@ -53,9 +53,9 @@ function createPillWindow(): void {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
 
   pillWindow = new BrowserWindow({
-    width: 200,
+    width: 360,
     height: 48,
-    x: Math.round(width / 2) - 100,
+    x: Math.round(width / 2) - 180,
     y: 24,
     frame: false,
     transparent: true,

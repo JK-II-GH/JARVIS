@@ -11,10 +11,15 @@
       background: transparent;
       overflow: hidden;
       user-select: none;
+      /* Pille horizontal mittig im Fenster halten — Fenster ist breiter
+         als die Pille, damit diese atmen kann */
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
     }
 
     .pille {
-      display: flex;
+      display: inline-flex;
       align-items: center;
       gap: 8px;
       padding: 0 16px;
@@ -28,8 +33,19 @@
         0 4px 24px rgba(0, 0, 0, 0.40),
         inset 0 1px 0 rgba(255, 255, 255, 0.06);
       margin: 4px;
-      /* Pille ist ziehbar, außer beim Modus-Badge */
+      /* Pille ist ziehbar, außer beim Modus-Badge / Settings-Button */
       -webkit-app-region: drag;
+      /* Sanftes Wachsen/Schrumpfen, wenn der Status-Text wechselt */
+      transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: width, transform;
+    }
+
+    /* Kurzes "Atmen" bei jedem Zustandswechsel */
+    .pille.tick { animation: pillTick 0.32s cubic-bezier(0.4, 0, 0.2, 1); }
+    @keyframes pillTick {
+      0%   { transform: scale(1);    }
+      45%  { transform: scale(0.965);}
+      100% { transform: scale(1);    }
     }
 
     .indikator {
@@ -39,14 +55,11 @@
       background: #4ade80;
       box-shadow: 0 0 6px #4ade80;
       flex-shrink: 0;
-      transition: background 0.2s, box-shadow 0.2s;
+      transition: background 0.2s, box-shadow 0.2s, opacity 0.2s;
     }
 
-    .indikator.aufnahme {
-      background: #f87171;
-      box-shadow: 0 0 8px #f87171;
-      animation: pulsieren 0.6s ease-in-out infinite;
-    }
+    /* Bei Aufnahme: Punkt verschwindet, Audio-Pegel-Balken kommen */
+    .indikator.aufnahme { display: none; }
 
     .indikator.verarbeitet {
       background: #facc15;
@@ -63,6 +76,24 @@
     @keyframes pulsieren {
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.5; transform: scale(0.85); }
+    }
+
+    /* Audio-Pegel-Anzeige (drei Balken) während Aufnahme */
+    .pegel {
+      display: none;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+      height: 14px;
+    }
+    .pegel.aktiv { display: inline-flex; }
+    .pegel .bar {
+      width: 3px;
+      height: 4px;
+      background: #f87171;
+      box-shadow: 0 0 4px rgba(248, 113, 113, 0.6);
+      border-radius: 1.5px;
+      transition: height 0.06s linear;
     }
 
     .status-text {
@@ -126,15 +157,23 @@
   </style>
 </head>
 <body>
-  <div class="pille">
+  <div class="pille" id="pille">
     <div class="indikator" id="indikator"></div>
+    <div class="pegel" id="pegel">
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+    </div>
     <span class="status-text" id="statusText">Bereit</span>
     <span class="modus-badge" id="modusBadge" title="Klicken zum Wechseln">Diktat</span>
     <span class="settings-btn" id="settingsBtn" title="Einstellungen">⚙</span>
   </div>
 
   <script>
+    const pille       = document.getElementById('pille');
     const indikator   = document.getElementById('indikator');
+    const pegel       = document.getElementById('pegel');
+    const pegelBars   = pegel.querySelectorAll('.bar');
     const statusText  = document.getElementById('statusText');
     const modusBadge  = document.getElementById('modusBadge');
 
@@ -152,6 +191,9 @@
       modusBadge.classList.toggle('gespraech', modusIndex === 2);
       modusBadge.classList.toggle('datei',     modusIndex === 3);
       window.jarvis.setMode(MODI_VALUES[modusIndex]);
+      // Badge-Text wechselt die Breite (z.B. "Diktat" vs "Bearbeiten") —
+      // die Pille muss sich mit anpassen, sonst wird das Zahnrad abgeschnitten
+      animatePillResize();
     }
 
     modusBadge.addEventListener('click', () => {
@@ -182,9 +224,33 @@
       const cfg = statusConfig[status] || statusConfig.bereit;
       statusText.textContent = cfg.text;
       indikator.className    = 'indikator ' + cfg.klass;
+      pegel.classList.toggle('aktiv', status === 'aufnahme');
       aufnahmeAktiv = (status !== 'bereit');
       if (modus) modusBadge.textContent = modus;
+      animatePillResize();
+      tickPulse();
     }
+
+    // Pille passt ihre Breite an den Inhalt an — wir messen die natürliche
+    // Content-Breite und setzen sie explizit, damit die CSS-Transition greift
+    function animatePillResize() {
+      // Erst auf "auto" für ehrliche Messung, dann auf gemessene Pixel
+      pille.style.width = 'auto';
+      requestAnimationFrame(() => {
+        const w = pille.scrollWidth;
+        pille.style.width = w + 'px';
+      });
+    }
+
+    // Re-trigger eine einmalige Tick-Animation
+    function tickPulse() {
+      pille.classList.remove('tick');
+      void pille.offsetWidth;
+      pille.classList.add('tick');
+    }
+
+    // Initiale Breite setzen, sobald DOM gemalt ist
+    requestAnimationFrame(animatePillResize);
 
     // ── WAV-Encoder: Float32 PCM → 16-bit Mono WAV ─────────────────────────
 
@@ -218,6 +284,8 @@
     let audioCtx  = null;
     let micStream = null;
     let processor = null;
+    let analyser  = null;
+    let pegelRaf  = null;
     let pcmChunks = [];
 
     window.jarvis.onStartRecording(async () => {
@@ -249,18 +317,66 @@
 
         src.connect(processor);
         processor.connect(audioCtx.destination);
+
+        // Parallel-Pfad für die Pegel-Visualisierung — AnalyserNode greift
+        // unabhängig vom ScriptProcessor auf den Stream zu
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.6;
+        src.connect(analyser);
+        startPegelLoop();
       } catch (err) {
         console.error('JARVIS Renderer: Mikrofon-Fehler:', err);
         setStatus('bereit');
       }
     });
 
+    // Pegel-Anzeige: AnalyserNode → RMS → drei Balken-Höhen.
+    // Verschiedene Frequenzbänder, damit die Balken nicht alle gleich zucken.
+    function startPegelLoop() {
+      stopPegelLoop();
+      const buf = new Uint8Array(analyser.frequencyBinCount);
+      const bandRanges = [
+        [0, Math.floor(buf.length * 0.10)],       // Bässe
+        [Math.floor(buf.length * 0.10), Math.floor(buf.length * 0.40)], // Mitten
+        [Math.floor(buf.length * 0.40), Math.floor(buf.length * 0.80)], // Höhen
+      ];
+      const smoothed = [0, 0, 0];
+      const minH = 4, maxH = 14;
+      const step = () => {
+        if (!analyser) return;
+        analyser.getByteFrequencyData(buf);
+        for (let i = 0; i < 3; i++) {
+          const [a, b] = bandRanges[i];
+          let sum = 0;
+          for (let j = a; j < b; j++) sum += buf[j];
+          const avg = sum / Math.max(1, b - a) / 255; // 0..1
+          // Exponentielle Glättung — weniger Geflacker
+          smoothed[i] = smoothed[i] * 0.55 + avg * 0.45;
+          // leichte Nichtlinearität für mehr Sprache-Sichtbarkeit
+          const h = minH + Math.pow(Math.min(1, smoothed[i] * 1.6), 0.7) * (maxH - minH);
+          pegelBars[i].style.height = h.toFixed(1) + 'px';
+        }
+        pegelRaf = requestAnimationFrame(step);
+      };
+      pegelRaf = requestAnimationFrame(step);
+    }
+
+    function stopPegelLoop() {
+      if (pegelRaf) cancelAnimationFrame(pegelRaf);
+      pegelRaf = null;
+      for (const b of pegelBars) b.style.height = '4px';
+    }
+
     function teardownMic() {
+      stopPegelLoop();
       if (!processor) return;
       try { processor.disconnect(); } catch {}
+      try { analyser && analyser.disconnect(); } catch {}
       try { micStream && micStream.getTracks().forEach(t => t.stop()); } catch {}
       try { audioCtx && audioCtx.close(); } catch {}
       processor = null;
+      analyser  = null;
       micStream = null;
       audioCtx  = null;
     }
