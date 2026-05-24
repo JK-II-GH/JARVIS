@@ -15,4 +15,8 @@ contextBridge.exposeInMainWorld("jarvisSettings", {
     ipcRenderer.invoke("jarvis:stt-model-download", model),
   onModelProgress: (cb: (data: { model: string; received: number; total: number }) => void) =>
     ipcRenderer.on("jarvis:stt-model-progress", (_, data) => cb(data)),
+
+  // Feedback
+  feedbackSave: (text: string) => ipcRenderer.invoke("jarvis:feedback-save", text),
+  feedbackOpen: () => ipcRenderer.send("jarvis:feedback-open"),
 });

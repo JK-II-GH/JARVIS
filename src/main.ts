@@ -32,7 +32,8 @@ let settings: SettingsManager;
 let hotkeyHandlers: HotkeyHandlers | null = null;
 
 // Zustand des aktuellen Vorgangs
-let currentMode: "dictation" | "edit" | "conversation" | "file" = "dictation";
+type AppMode = "dictation" | "edit" | "conversation" | "file";
+let currentMode: AppMode = "dictation";
 // Im Bearbeiten-Modus: Promise das beim Loslassen des Hotkeys gestartet wird
 let pendingSelectedText: Promise<string> | null = null;
 // Im Datei-Modus: Promise auf den Dateipfad (Finder-Auswahl oder Screenshot)
@@ -42,10 +43,14 @@ let speaking = false;
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20 MB
 
-const MODES: Array<"dictation" | "edit" | "conversation" | "file"> = ["dictation", "edit", "conversation", "file"];
+const MODES: AppMode[] = ["dictation", "edit", "conversation", "file"];
 const MODE_LABELS: Record<string, string> = {
   dictation: "Diktat", edit: "Bearbeiten", conversation: "Gespräch", file: "Datei",
 };
+
+function getFeedbackPath(): string {
+  return path.join(app.getPath("userData"), "feedback.md");
+}
 
 // ── Pille ──────────────────────────────────────────────────────────────────
 
@@ -141,6 +146,11 @@ function rebuildTrayMenu(): void {
     })),
     { type: "separator" },
     { label: "Einstellungen …", click: () => openSettingsWindow() },
+    {
+      label: "Feedback öffnen …",
+      enabled: fs.existsSync(getFeedbackPath()),
+      click: () => shell.openPath(getFeedbackPath()),
+    },
     { type: "separator" },
     { label: "JARVIS beenden", accelerator: "CommandOrControl+Q", click: () => app.quit() },
   ]);
@@ -181,7 +191,10 @@ function pickSttProvider(): STTProvider | null {
   return new WhisperProvider(cfg);
 }
 
-function sendStatus(status: "bereit" | "aufnahme" | "verarbeitet" | "spricht", modus = "Diktat"): void {
+function sendStatus(
+  status: "bereit" | "aufnahme" | "verarbeitet" | "spricht",
+  modus = "Diktat",
+): void {
   pillWindow?.webContents.send("jarvis:status-update", status, modus);
 }
 
@@ -386,6 +399,33 @@ async function initialize(): Promise<void> {
 
   ipcMain.on("jarvis:settings-close", () => settingsWindow?.close());
 
+  // Feedback: Eintrag mit Zeitstempel an feedback.md anhängen
+  ipcMain.handle("jarvis:feedback-save", (_, text: string) => {
+    const t = String(text ?? "").trim();
+    if (!t) return false;
+    const file = getFeedbackPath();
+    const ts = new Date().toLocaleString("de-DE", {
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit",
+    });
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    if (!fs.existsSync(file)) fs.writeFileSync(file, "# JARVIS Feedback\n");
+    fs.appendFileSync(file, `\n## ${ts}\n\n${t}\n`);
+    console.log(`JARVIS: Feedback gespeichert in ${file}`);
+    rebuildTrayMenu(); // damit "Feedback öffnen ..." aktiv wird
+    return true;
+  });
+
+  ipcMain.on("jarvis:feedback-open", () => {
+    const file = getFeedbackPath();
+    if (!fs.existsSync(file)) {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, "# JARVIS Feedback\n");
+      rebuildTrayMenu();
+    }
+    shell.openPath(file);
+  });
+
   // Hotkey-Handler einmalig zusammenstellen — werden beim Re-Register
   // mit anderem Combo unverändert wiederverwendet
   hotkeyHandlers = {
@@ -436,7 +476,7 @@ async function initialize(): Promise<void> {
 
   // Audio empfangen → transkribieren → je nach Modus verarbeiten
   ipcMain.on("jarvis:audio-data", async (_, data: ArrayBuffer, mimeType: string) => {
-    const modusLabel = currentMode === "edit" ? "Bearbeiten" : "Diktat";
+    const modusLabel = MODE_LABELS[currentMode] ?? "Diktat";
     try {
       const stt = pickSttProvider();
       if (!stt) {
