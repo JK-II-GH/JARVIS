@@ -107,6 +107,10 @@ function createPillWindow(): void {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // Sandbox aus — wir laden nur eigene HTML und müssen im Preload
+      // lokale Module requiren können (z.B. ./platform/index für Mode-
+      // Konstanten). Mit Sandbox-Standard scheitert require still.
+      sandbox: false,
     },
   });
 
@@ -347,9 +351,22 @@ async function initialize(): Promise<void> {
   settings = new SettingsManager();
   platform = createPlatformAdapter(getWindowSources);
 
+  await requestStartupPermissions();
+  resetIpcHandlers();
+  bindModeIPC();
+  bindSettingsIPC();
+  bindModelIPC();
+  bindFeedbackIPC();
+  bindRecordingFailedIPC();
+  await setupHotkey();
+  bindAudioIPC();
+}
+
+// ── Berechtigungen ────────────────────────────────────────────────────────
+
+async function requestStartupPermissions(): Promise<void> {
   const perms = await platform.checkPermissions();
 
-  // Screen-Recording-Status — nötig für Quick Look-Fenstererkennung
   if (!perms.screenRecording) {
     dialog.showMessageBox({
       type: "info",
@@ -364,7 +381,6 @@ async function initialize(): Promise<void> {
     });
   }
 
-  // Mikrofon-Berechtigung
   if (!perms.microphone) {
     const { response } = await dialog.showMessageBox({
       type: "warning",
@@ -376,7 +392,6 @@ async function initialize(): Promise<void> {
     if (response === 0) await platform.openPermissionSettings("microphone");
   }
 
-  // Bedienungshilfen-Berechtigung (für Text lesen/ersetzen in Phase 2)
   if (!perms.accessibility) {
     dialog.showMessageBox({
       type: "info",
@@ -393,7 +408,6 @@ async function initialize(): Promise<void> {
     });
   }
 
-  // STT-Schlüssel prüfen
   if (!settings.getSttConfig()) {
     dialog.showMessageBox({
       type: "info",
@@ -406,32 +420,36 @@ async function initialize(): Promise<void> {
       buttons: ["OK"],
     });
   }
+}
 
-  // Sicherheitsguard: alle .handle-Channels vor neuer Registrierung räumen,
-  // damit ein versehentlicher Zweit-Aufruf von initialize() nicht crasht
-  const channelsToReset = [
+// ── IPC-Setup ─────────────────────────────────────────────────────────────
+
+/** Räumt .handle-Channels, damit ein versehentlicher Re-Init nicht crasht. */
+function resetIpcHandlers(): void {
+  const channels = [
     "jarvis:settings-load",
     "jarvis:settings-save",
     "jarvis:stt-model-status",
     "jarvis:stt-model-download",
     "jarvis:feedback-save",
   ];
-  for (const ch of channelsToReset) ipcMain.removeHandler(ch);
+  for (const ch of channels) ipcMain.removeHandler(ch);
+}
 
+function bindModeIPC(): void {
   // Modus-Wechsel vom Renderer (Klick auf Modus-Badge)
   ipcMain.on("jarvis:set-mode", (_, mode: string) => {
     currentMode = mode as typeof currentMode;
     rebuildTrayMenu();
     console.log(`JARVIS: Modus gesetzt auf "${currentMode}"`);
   });
-
   // Einstellungsfenster öffnen (Klick auf Pille)
   ipcMain.on("jarvis:open-settings", () => openSettingsWindow());
+}
 
-  // Settings laden / speichern
+function bindSettingsIPC(): void {
   ipcMain.handle("jarvis:settings-load", () => {
     const keys = settings.getRawKeys();
-    const localModel = settings.getLocalSttModel();
     return {
       aiProvider:   settings.getAiProvider(),
       anthropicKey: keys.anthropicApiKey,
@@ -439,7 +457,7 @@ async function initialize(): Promise<void> {
       groqKey:      keys.groqApiKey,
       hotkey:       settings.getHotkey(),
       sttMode:      settings.getSttMode(),
-      sttLocalModel: localModel,
+      sttLocalModel: settings.getLocalSttModel(),
       whisperBinary: findWhisperBinary(),
       models: Object.fromEntries(
         (Object.keys(LOCAL_MODELS) as (keyof typeof LOCAL_MODELS)[]).map((k) => [
@@ -450,7 +468,36 @@ async function initialize(): Promise<void> {
     };
   });
 
-  // Status eines einzelnen Modells inkl. Update-Check (HEAD-Request zu HF)
+  ipcMain.handle("jarvis:settings-save", async (_, data: Record<string, string>) => {
+    const previousHotkey = settings.getHotkey();
+    settings.update({
+      anthropicApiKey: data.anthropicKey ?? "",
+      openaiApiKey:    data.openaiKey    ?? "",
+      groqApiKey:      data.groqKey      ?? "",
+      aiProvider:      (data.aiProvider === "openai" ? "openai" : "anthropic"),
+      hotkey:          data.hotkey as HotkeyCombo | undefined,
+      sttMode:         (data.sttMode === "local" || data.sttMode === "cloud") ? data.sttMode : undefined,
+      sttLocalModel:   (data.sttLocalModel as "tiny" | "base" | "small" | undefined),
+    });
+    invalidateProviderCache();
+    console.log(`JARVIS: Einstellungen gespeichert, STT="${settings.getSttMode()}", Anbieter="${settings.getAiProvider()}", Hotkey="${settings.getHotkey()}"`);
+
+    const newHotkey = settings.getHotkey();
+    if (newHotkey !== previousHotkey && hotkeyHandlers) {
+      try {
+        await platform.registerHotkey(hotkeyHandlers, newHotkey);
+        console.log(`JARVIS: Hotkey live neu registriert (${previousHotkey} → ${newHotkey})`);
+      } catch (err) {
+        logError("JARVIS: Hotkey-Reregistrierung fehlgeschlagen:", err);
+      }
+    }
+  });
+
+  ipcMain.on("jarvis:settings-close", () => settingsWindow?.close());
+}
+
+function bindModelIPC(): void {
+  // Status eines Modells inkl. Update-Check (HEAD-Request zu HuggingFace)
   ipcMain.handle("jarvis:stt-model-status", async (_, model) => {
     return await checkModelStatus(model);
   });
@@ -466,40 +513,11 @@ async function initialize(): Promise<void> {
       return { ok: false, error: String(err instanceof Error ? err.message : err) };
     }
   });
+}
 
-  ipcMain.handle("jarvis:settings-save", async (_, data: Record<string, string>) => {
-    const previousHotkey = settings.getHotkey();
-    // Statt rohem JSON.parse → SettingsManager.update() respektiert die
-    // in-memory data und übersteht kaputte Dateien stillschweigend.
-    settings.update({
-      anthropicApiKey: data.anthropicKey ?? "",
-      openaiApiKey:    data.openaiKey    ?? "",
-      groqApiKey:      data.groqKey      ?? "",
-      aiProvider:      (data.aiProvider === "openai" ? "openai" : "anthropic"),
-      hotkey:          data.hotkey as HotkeyCombo | undefined,
-      sttMode:         (data.sttMode === "local" || data.sttMode === "cloud") ? data.sttMode : undefined,
-      sttLocalModel:   (data.sttLocalModel as "tiny" | "base" | "small" | undefined),
-    });
-    invalidateProviderCache();
-    console.log(`JARVIS: Einstellungen gespeichert, STT="${settings.getSttMode()}", Anbieter="${settings.getAiProvider()}", Hotkey="${settings.getHotkey()}"`);
-
-    // Hotkey live neu registrieren, falls sich die Kombi geändert hat
-    const newHotkey = settings.getHotkey();
-    if (newHotkey !== previousHotkey && hotkeyHandlers) {
-      try {
-        await platform.registerHotkey(hotkeyHandlers, newHotkey);
-        console.log(`JARVIS: Hotkey live neu registriert (${previousHotkey} → ${newHotkey})`);
-      } catch (err) {
-        logError("JARVIS: Hotkey-Reregistrierung fehlgeschlagen:", err);
-      }
-    }
-  });
-
-  ipcMain.on("jarvis:settings-close", () => settingsWindow?.close());
-
-  // Feedback: Eintrag mit Zeitstempel an feedback.md anhängen. Über
-  // feedbackChain serialisieren — sonst können parallele Klicks zu
-  // ineinander verschachtelten Einträgen führen.
+function bindFeedbackIPC(): void {
+  // Eintrag mit Zeitstempel an feedback.md anhängen — über feedbackChain
+  // serialisiert, sonst können parallele Klicks Einträge verschachteln
   ipcMain.handle("jarvis:feedback-save", (_, text: string) => {
     const t = String(text ?? "").trim();
     if (!t) return false;
@@ -516,7 +534,21 @@ async function initialize(): Promise<void> {
     }
     shell.openPath(file);
   });
+}
 
+function bindRecordingFailedIPC(): void {
+  // Renderer meldet, dass die Aufnahme NICHT verarbeitet werden kann
+  // (Mic verweigert, zu kurz, getUserMedia-Race etc.). Status zurücksetzen.
+  ipcMain.on("jarvis:recording-failed", (_, reason: string) => {
+    console.log(`JARVIS: Aufnahme fehlgeschlagen (${reason}) — Status zurückgesetzt`);
+    pendingMode = null;
+    pendingSelectedText = null;
+    pendingSelectedFile = null;
+    if (!speaking) sendStatus("bereit", MODE_LABELS[currentMode]);
+  });
+}
+
+async function setupHotkey(): Promise<void> {
   // Hotkey-Handler einmalig zusammenstellen — werden beim Re-Register
   // mit anderem Combo unverändert wiederverwendet
   hotkeyHandlers = {
@@ -567,18 +599,9 @@ async function initialize(): Promise<void> {
 
   await platform.registerHotkey(hotkeyHandlers, settings.getHotkey());
   console.log(`JARVIS: Hotkey registriert (${settings.getHotkey()})`);
+}
 
-  // Renderer meldet, dass die Aufnahme NICHT verarbeitet werden kann
-  // (Mic verweigert, zu kurz, getUserMedia-Race etc.). Wir resetten den
-  // Status, damit die Pille nicht in "verarbeitet" hängen bleibt.
-  ipcMain.on("jarvis:recording-failed", (_, reason: string) => {
-    console.log(`JARVIS: Aufnahme fehlgeschlagen (${reason}) — Status zurückgesetzt`);
-    pendingMode = null;
-    pendingSelectedText = null;
-    pendingSelectedFile = null;
-    if (!speaking) sendStatus("bereit", MODE_LABELS[currentMode]);
-  });
-
+function bindAudioIPC(): void {
   // Audio empfangen → transkribieren → je nach Modus verarbeiten
   ipcMain.on("jarvis:audio-data", async (_, data: ArrayBuffer, mimeType: string) => {
     // pendingMode wurde beim onHoldEnd eingefroren — damit landet die
