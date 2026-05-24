@@ -8,9 +8,10 @@
     "build": "tsc",
     "watch": "tsc --watch",
     "dev": "tsc && electron .",
-    "pack": "npm run build && electron-builder --dir && npm run clean:native",
-    "dist": "npm run build && electron-builder && npm run clean:native",
-    "dist:mac": "npm run build && electron-builder --mac && npm run clean:native",
+    "pack": "npm run build && npm run build:whisper && electron-builder --dir && npm run clean:native",
+    "dist": "npm run build && npm run build:whisper && electron-builder && npm run clean:native",
+    "dist:mac": "npm run build && npm run build:whisper && electron-builder --mac && npm run clean:native",
+    "build:whisper": "bash scripts/build-whisper.sh",
     "clean:native": "rm -rf node_modules/uiohook-napi/build",
     "release": "bash scripts/release.sh"
   },
@@ -45,6 +46,12 @@
     ],
     "asarUnpack": [
       "**/node_modules/uiohook-napi/**"
+    ],
+    "extraResources": [
+      {
+        "from": "build/whisper-bin/whisper-cli",
+        "to": "bin/whisper-cli"
+      }
     ],
     "mac": {
       "category": "public.app-category.productivity",

@@ -117,18 +117,30 @@ export async function checkModelStatus(model: LocalSttModel): Promise<ModelStatu
 
 /**
  * Sucht das whisper-cli-Binary. Reihenfolge:
- *   1. Standard-Brew-Pfade (arm64 + x64)
- *   2. PATH-Suche via `which`
+ *   1. Mitgeliefertes Binary im App-Bundle (gepackt) oder build/whisper-bin (Dev)
+ *   2. Standard-Brew-Pfade (Fallback für Dev-Maschinen ohne eigenen Build)
+ *   3. PATH-Suche via `which`
  * Gibt den absoluten Pfad zurück oder null wenn nichts gefunden wurde.
  */
 export function findWhisperBinary(): string | null {
-  const candidates = [
-    "/opt/homebrew/bin/whisper-cli",
-    "/usr/local/bin/whisper-cli",
-  ];
+  const candidates: string[] = [];
+
+  // 1) Gepacktes App-Bundle: Contents/Resources/bin/whisper-cli
+  if (app.isPackaged) {
+    candidates.push(path.join(process.resourcesPath, "bin", "whisper-cli"));
+  } else {
+    // Dev-Modus: build/whisper-bin/ relativ zur Projektwurzel (cwd)
+    candidates.push(path.resolve(process.cwd(), "build/whisper-bin/whisper-cli"));
+  }
+
+  // 2) Brew-Standardpfade
+  candidates.push("/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli");
+
   for (const c of candidates) {
     try { if (fs.statSync(c).isFile()) return c; } catch { /* weiter */ }
   }
+
+  // 3) PATH
   try {
     const r = spawnSync("which", ["whisper-cli"], { encoding: "utf-8" });
     const p = r.stdout.trim();

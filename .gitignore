@@ -5,6 +5,9 @@ node_modules/
 dist/
 release/
 out/
+# whisper.cpp wird per scripts/build-whisper.sh regeneriert
+build/whisper-src/
+build/whisper-bin/
 
 # Schluessel und lokale Konfiguration — NIEMALS einchecken
 .env

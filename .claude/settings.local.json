@@ -48,7 +48,12 @@
       "Bash(open /tmp/icon_preview.png)",
       "Read(//opt/homebrew/bin/**)",
       "Bash(brew list *)",
-      "Bash(whisper-cli --help)"
+      "Bash(whisper-cli --help)",
+      "Bash(cmake --version)",
+      "Bash(git --version)",
+      "Bash(chmod +x scripts/build-whisper.sh)",
+      "Bash(bash scripts/build-whisper.sh)",
+      "Bash(./build/whisper-bin/whisper-cli --help)"
     ]
   }
 }
