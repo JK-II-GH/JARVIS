@@ -1,6 +1,6 @@
 {
   "name": "jarvis",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Desktop-KI-Assistent — unsichtbar im Weg",
   "main": "dist/main.js",
   "scripts": {
@@ -50,10 +50,19 @@
     "mac": {
       "category": "public.app-category.productivity",
       "extraResources": [
-        { "from": "build/whisper-bin/whisper-cli", "to": "bin/whisper-cli" }
+        {
+          "from": "build/whisper-bin/whisper-cli",
+          "to": "bin/whisper-cli"
+        }
       ],
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "identity": null,
       "hardenedRuntime": false,
@@ -67,8 +76,17 @@
     "dmg": {
       "title": "JARVIS ${version}",
       "contents": [
-        { "x": 130, "y": 220, "type": "file" },
-        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+        {
+          "x": 130,
+          "y": 220,
+          "type": "file"
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
       ]
     },
     "publish": {
